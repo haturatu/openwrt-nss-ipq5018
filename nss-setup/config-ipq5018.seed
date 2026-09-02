@@ -24,6 +24,10 @@ CONFIG_NSS_MEM_PROFILE_MEDIUM=y
 # Start with the firmware used by the existing NSS integration.
 CONFIG_NSS_FIRMWARE_VERSION_11_4=y
 
+# Use a workspace-local ccache in CI and on developer builds.
+CONFIG_DEVEL=y
+CONFIG_CCACHE=y
+
 # Keep Wi-Fi NSS out of the first hardware bring-up.
 # CONFIG_ATH11K_NSS_SUPPORT is not set
 # CONFIG_ATH11K_NSS_MESH_SUPPORT is not set
