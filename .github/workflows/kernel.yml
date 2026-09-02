@@ -1,19 +1,21 @@
-name: Build Kernel
+name: Build IPQ5018 Kernel
 
 on:
   pull_request:
     paths:
-      - '.github/workflows/check-kernel-patches.yml'
-      - '.github/workflows/build.yml'
       - '.github/workflows/kernel.yml'
+      - '.github/workflows/ipq5018.yml'
+      - 'feeds.conf.default'
+      - 'nss-setup/**'
       - 'include/kernel*'
       - 'package/kernel/**'
       - 'target/linux/**'
   push:
     paths:
-      - '.github/workflows/check-kernel-patches.yml'
-      - '.github/workflows/build.yml'
       - '.github/workflows/kernel.yml'
+      - '.github/workflows/ipq5018.yml'
+      - 'feeds.conf.default'
+      - 'nss-setup/**'
       - 'include/kernel*'
       - 'package/kernel/**'
       - 'target/linux/**'
@@ -29,15 +31,85 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  build-kernels:
-    name: Build all affected Kernels
-    permissions:
-      contents: read
-      packages: read
-      actions: write
-    secrets:
-      ccache_s3_endpoint: ${{ secrets.CCACHE_S3_ENDPOINT }}
-      ccache_s3_bucket: ${{ secrets.CCACHE_S3_BUCKET }}
-      ccache_s3_access_key: ${{ secrets.CCACHE_S3_ACCESS_KEY }}
-      ccache_s3_secret_key: ${{ secrets.CCACHE_S3_SECRET_KEY }}
-    uses: openwrt/actions-shared-workflows/.github/workflows/kernel.yml@main
+  build-kernel:
+    name: Build IPQ5018 kernel and device tree
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Cache downloads
+        uses: actions/cache@v4
+        with:
+          path: dl
+          key: ${{ runner.os }}-openwrt-ipq5018-kernel-dl-${{ hashFiles('feeds.conf.default') }}
+          restore-keys: |
+            ${{ runner.os }}-openwrt-ipq5018-kernel-dl-
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            aria2 build-essential bison clang flex g++ gawk gettext \
+            libelf-dev libncurses-dev libssl-dev libzstd-dev python3 \
+            python3-setuptools rsync unzip xsltproc zlib1g-dev file wget
+
+      - name: Update and install feeds
+        run: |
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Generate IPQ5018 config
+        run: |
+          cp nss-setup/config-ipq5018.seed .config
+          make defconfig
+          test "$(sed -n 's/^CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_linksys_mx2000=//p' .config)" = y
+          ! grep -Eq '^CONFIG_ATH11K_NSS_SUPPORT=y$' .config
+          grep -Eq '^CONFIG_NSS_FIRMWARE_VERSION_11_4=y$' .config
+
+      - name: Remove prebuilt host tool paths
+        run: |
+          rm -rf -- staging_dir/host build_dir/host
+          test ! -e staging_dir/host
+          test ! -e build_dir/host
+
+      - name: Build host tools in the workspace
+        run: make tools/install -j"$(nproc)" CONFIG_DOWNLOAD_TOOL_CUSTOM=aria2c V=s
+
+      - name: Verify workspace host tools
+        run: |
+          test -d staging_dir/host
+          test ! -L staging_dir/host
+          test ! -L build_dir/host
+          test -x staging_dir/host/bin/autom4te
+          staging_dir/host/bin/autom4te --version
+
+      - name: Build IPQ5018 kernel and device tree
+        run: make target/linux/compile -j"$(nproc)" CONFIG_DOWNLOAD_TOOL_CUSTOM=aria2c V=s
+
+      - name: Collect build diagnostics
+        if: always()
+        run: |
+          mkdir -p ci-artifacts
+          {
+            echo "commit=$(git rev-parse HEAD)"
+            echo "date=$(date -u +%FT%TZ)"
+            echo "target=qualcommax/ipq50xx"
+            echo "device=linksys_mx2000"
+            echo "workflow_run=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          } > ci-artifacts/kernel-metadata.txt
+          if [ -f .config ]; then
+            cp .config ci-artifacts/config
+          fi
+
+      - name: Upload kernel diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openwrt-nss-ipq5018-kernel-${{ github.run_id }}
+          if-no-files-found: warn
+          retention-days: 7
+          path: |
+            ci-artifacts/**
+            tmp/log/**
