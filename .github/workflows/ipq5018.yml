@@ -1,23 +1,37 @@
-name: IPQ5018 configuration
+name: Build IPQ5018 NSS firmware
 
 on:
   pull_request:
     paths:
       - '.github/workflows/ipq5018.yml'
+      - 'README.md'
+      - 'docs/**'
       - 'feeds.conf.default'
       - 'nss-setup/**'
-      - 'package/kernel/**'
-      - 'target/linux/qualcommax/**'
+      - 'package/**'
+      - 'target/**'
+      - 'include/**'
+      - 'toolchain/**'
+      - 'rules.mk'
+      - 'Makefile'
+      - 'scripts/**'
   push:
     branches:
       - feat/nss-ipq5018
       - 25.12-nss
     paths:
       - '.github/workflows/ipq5018.yml'
+      - 'README.md'
+      - 'docs/**'
       - 'feeds.conf.default'
       - 'nss-setup/**'
-      - 'package/kernel/**'
-      - 'target/linux/qualcommax/**'
+      - 'package/**'
+      - 'target/**'
+      - 'include/**'
+      - 'toolchain/**'
+      - 'rules.mk'
+      - 'Makefile'
+      - 'scripts/**'
   workflow_dispatch:
 
 permissions:
@@ -28,20 +42,29 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  config:
-    name: Validate IPQ5018 NSS config
+  build:
+    name: Build Linksys MX2000 firmware
     runs-on: ubuntu-24.04
+    timeout-minutes: 240
     steps:
       - name: Check out source
         uses: actions/checkout@v4
+
+      - name: Cache downloads
+        uses: actions/cache@v4
+        with:
+          path: dl
+          key: ${{ runner.os }}-openwrt-ipq5018-dl-${{ hashFiles('feeds.conf.default') }}
+          restore-keys: |
+            ${{ runner.os }}-openwrt-ipq5018-dl-
 
       - name: Install build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            build-essential ccache clang flex gawk gettext \
-            libncurses-dev libssl-dev python3 rsync unzip xsltproc \
-            zlib1g-dev file wget
+            aria2 build-essential bison clang flex g++ gawk gettext \
+            libelf-dev libncurses-dev libssl-dev libzstd-dev python3 \
+            python3-setuptools rsync unzip xsltproc zlib1g-dev file wget
 
       - name: Update and install feeds
         run: |
@@ -55,9 +78,58 @@ jobs:
           test "$(sed -n 's/^CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_linksys_mx2000=//p' .config)" = y
           ! grep -Eq '^CONFIG_ATH11K_NSS_SUPPORT=y$' .config
           grep -Eq '^CONFIG_NSS_FIRMWARE_VERSION_11_4=y$' .config
+          grep -Eq '^CONFIG_PACKAGE_nss-firmware-ipq50xx=y$' .config
 
       - name: Check diagnostic script syntax
         run: sh -n nss-setup/diagnose-ipq5018.sh
 
-      - name: Build IPQ5018 kernel and device tree
-        run: make -j2 target/linux/compile V=s
+      - name: Build IPQ5018 firmware
+        run: make -j"$(nproc)" CONFIG_DOWNLOAD_TOOL_CUSTOM=aria2c V=s
+
+      - name: Collect build metadata
+        if: always()
+        run: |
+          {
+            echo "commit=$(git rev-parse HEAD)"
+            echo "date=$(date -u +%FT%TZ)"
+            echo "target=qualcommax/ipq50xx"
+            echo "device=linksys_mx2000"
+            echo "workflow_run=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          } > build-metadata.txt
+
+          target_dir="bin/targets/qualcommax/ipq50xx"
+          if [ -d "$target_dir" ]; then
+            find "$target_dir" -maxdepth 1 -type f -printf '%f\n' | sort > build-files.txt
+            find "$target_dir" -maxdepth 1 -type f \
+              ! -name 'build-files.txt' ! -name 'build-sha256sums.txt' \
+              -print0 | sort -z | xargs -0r sha256sum > build-sha256sums.txt
+          fi
+
+      - name: Upload firmware artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openwrt-nss-ipq5018-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+          path: |
+            bin/targets/qualcommax/ipq50xx/**
+            build-metadata.txt
+            build-files.txt
+            build-sha256sums.txt
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openwrt-nss-ipq5018-failure-${{ github.run_id }}
+          if-no-files-found: warn
+          retention-days: 7
+          path: |
+            .config
+            build-metadata.txt
+            build-files.txt
+            build-sha256sums.txt
+            tmp/log/**
+            bin/targets/qualcommax/ipq50xx/**
