@@ -1,0 +1,63 @@
+name: IPQ5018 configuration
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/ipq5018.yml'
+      - 'feeds.conf.default'
+      - 'nss-setup/**'
+      - 'package/kernel/**'
+      - 'target/linux/qualcommax/**'
+  push:
+    branches:
+      - feat/nss-ipq5018
+      - 25.12-nss
+    paths:
+      - '.github/workflows/ipq5018.yml'
+      - 'feeds.conf.default'
+      - 'nss-setup/**'
+      - 'package/kernel/**'
+      - 'target/linux/qualcommax/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  config:
+    name: Validate IPQ5018 NSS config
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential ccache clang flex gawk gettext \
+            libncurses-dev libssl-dev python3 rsync unzip xsltproc \
+            zlib1g-dev file wget
+
+      - name: Update and install feeds
+        run: |
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Generate IPQ5018 config
+        run: |
+          cp nss-setup/config-ipq5018.seed .config
+          make defconfig
+          test "$(sed -n 's/^CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_linksys_mx2000=//p' .config)" = y
+          ! grep -Eq '^CONFIG_ATH11K_NSS_SUPPORT=y$' .config
+          grep -Eq '^CONFIG_NSS_FIRMWARE_VERSION_11_4=y$' .config
+
+      - name: Check diagnostic script syntax
+        run: sh -n nss-setup/diagnose-ipq5018.sh
+
+      - name: Build IPQ5018 kernel and device tree
+        run: make -j2 target/linux/compile V=s

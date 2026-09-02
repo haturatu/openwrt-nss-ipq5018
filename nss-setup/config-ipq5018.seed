@@ -1,0 +1,38 @@
+# vi: set syntax=make:
+#
+# Minimal IPQ5018 NSS bring-up seed.
+#
+# This seed intentionally keeps ath11k Wi-Fi on the normal Linux path. Enable
+# ATH11K_NSS_SUPPORT only after NSS core, NSS-DP, and ECM have been validated.
+# It is suitable for the Linksys MX2000 and other IPQ5018 devices supported by
+# this tree.
+
+CONFIG_TARGET_qualcommax=y
+CONFIG_TARGET_qualcommax_ipq50xx=y
+CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_linksys_mx2000=y
+
+# NSS dataplane, core driver, firmware, and ECM.
+CONFIG_PACKAGE_kmod-qca-nss-dp=y
+CONFIG_PACKAGE_kmod-qca-nss-drv=y
+CONFIG_PACKAGE_kmod-qca-nss-ecm=y
+CONFIG_PACKAGE_nss-firmware=y
+CONFIG_PACKAGE_nss-firmware-ipq50xx=y
+
+# IPQ5018 NSS uses the medium (512 MiB) memory profile.
+CONFIG_NSS_MEM_PROFILE_MEDIUM=y
+
+# Start with the firmware used by the existing NSS integration.
+CONFIG_NSS_FIRMWARE_VERSION_11_4=y
+
+# Keep Wi-Fi NSS out of the first hardware bring-up.
+# CONFIG_ATH11K_NSS_SUPPORT is not set
+# CONFIG_ATH11K_NSS_MESH_SUPPORT is not set
+
+# Test and failure analysis tools.
+CONFIG_PACKAGE_iperf3=y
+CONFIG_PACKAGE_ethtool=y
+CONFIG_PACKAGE_tcpdump=y
+CONFIG_PACKAGE_kmod-ramoops=y
+
+# OpenWrt software flow offload must remain disabled for NSS measurements.
+# Configure this in /etc/config/firewall on the device if an old config is kept.

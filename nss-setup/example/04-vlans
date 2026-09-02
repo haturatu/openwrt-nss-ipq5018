@@ -1,0 +1,112 @@
+# For NSS setups, you CANNOT enable the option for vlan filtering.
+# This is done internally by NSS (via `kmod-qca-nss-drv-vlan-mgr`).
+#
+# Check if you have it enabled by running the following command:
+# `uci show network | grep vlan_filtering`
+#
+# If it's enabled, you might see:
+# `network.@device[0].vlan_filtering='1'`
+#
+# Disable it by running the following commands:
+# `uci del network.@device[0].vlan_filtering`
+# `uci commit network`
+# `service network restart` (or reboot the device)
+#
+# You also cannot use tagging in the typical way, as the NSS does not support it.
+# That means your config must not anything like:
+#
+# 'list ports 'lan1:u*'
+# 'list ports 'lan2:t'
+# 'list ports 'lan3:t'
+#
+# To set up VLANs you must:
+# 1.) Set them up on specific ports
+# 2.) Bridge them into interfaces (they can be left unmanaged)
+# 3.) Create firewall rules
+
+# Example setup:
+# 1.) Primary Network (vlan1) - untagged
+# 2.) Guest Network (vlan30)
+# 3.) IoT Network (vlan40)
+
+# /etc/config/network
+config interface 'loopback'
+	option device 'lo'
+	option proto 'static'
+	option ipaddr '127.0.0.1'
+	option netmask '255.0.0.0'
+
+config globals 'globals'
+	option ula_prefix 'fd32:aa0c:9a35::/48'
+
+config device
+	option name 'br-lan'
+	option type 'bridge'
+	list ports 'lan1'
+	list ports 'lan2'
+	list ports 'lan3'
+	option igmp_snooping '1'
+
+config interface 'lan'
+	option device 'br-lan'
+	option proto 'static'
+	option ip6assign '60'
+	list ipaddr '192.168.1.1/24'
+
+config device
+	option type 'bridge'
+	option name 'br-iot'
+	list ports 'wan.40'
+	option igmp_snooping '1'
+
+config device
+	option type 'bridge'
+	option name 'br-guest'
+	list ports 'wan.30'
+	option igmp_snooping '1'
+
+config interface 'guest'
+	option proto 'none'
+	option device 'br-guest'
+
+config interface 'iot'
+	option proto 'none'
+	option device 'br-iot'
+
+# ONLY for devices that have trouble enumerating the LAN ports correctly.
+# Linksys MX4300/LN130 lan ports 2 and 3 are randomly
+# assigned MAC addresses. Workaround is to manually set them to be the same as lan1
+
+config device
+	option name 'lan2'
+	option macaddr 'AA:BB:CC:DD:EE:FF'
+
+config device
+	option name 'lan3'
+	option macaddr 'AA:BB:CC:DD:EE:FF'
+
+# /etc/config/wireless
+
+config wifi-iface 'default_radio0''
+	option device 'radio0'
+	option mode 'ap'
+	option network 'lan'
+	option ssid 'OpenWrt'
+	option encryption 'psk2'
+	option key '********'
+
+config wifi-iface 'guest'
+	option device 'radio0'
+	option mode 'ap'
+	option network 'br-guest'
+	option ssid 'OpenWrt-Guest'
+	option encryption 'psk2'
+	option key '********'
+
+config wifi-iface 'iot'
+	option device 'radio0'
+	option mode 'ap'
+	option network 'br-iot'
+	option ssid 'OpenWrt-IoT'
+	option encryption 'psk2'
+	option key '********'
