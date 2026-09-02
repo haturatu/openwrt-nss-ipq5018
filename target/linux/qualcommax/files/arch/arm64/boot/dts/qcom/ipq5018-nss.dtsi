@@ -115,7 +115,7 @@
 	};
 };
 
-&wifi0 {
+&wifi {
 	// IPQ5018
 	nss-radio-priority = <0>;
 };
