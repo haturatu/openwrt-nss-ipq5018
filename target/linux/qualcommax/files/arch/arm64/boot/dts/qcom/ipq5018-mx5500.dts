@@ -2,6 +2,7 @@
 
 #include "ipq5018.dtsi"
 #include "ipq5018-mx-base.dtsi"
+#include "ipq5018-nss.dtsi"
 
 / {
 	model = "Linksys MX5500";

@@ -3,6 +3,8 @@
 #include "ipq5018.dtsi"
 #include "ipq5018-mx-base.dtsi"
 #include "ipq5018-qcn6122.dtsi"
+#include "ipq5018-nss.dtsi"
+#include "ipq5018-nss-qcn6122.dtsi"
 
 / {
 	model = "Linksys MX2000";

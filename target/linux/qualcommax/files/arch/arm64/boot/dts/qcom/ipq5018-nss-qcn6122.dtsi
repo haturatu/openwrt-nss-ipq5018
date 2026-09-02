@@ -1,0 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0-only
+
+&wifi1 {
+	// QCN6122 5G
+	nss-radio-priority = <1>;
+};
+
+&wifi2 {
+	// QCN6122 5G/6G
+	nss-radio-priority = <1>;
+};
