@@ -687,10 +687,9 @@
  	data = kmalloc_reserve(&size, gfp_mask, NUMA_NO_NODE, NULL);
  	if (!data)
  		return -ENOMEM;
-@@ -6837,7 +7070,7 @@ static int pskb_carve_inside_nonlinear(s
- 		skb_kfree_head(data, size);
- 		return -ENOMEM;
- 	}
+@@ -7125,5 +7125,5 @@ static int pskb_carve_inside_nonlinear(s
+ 	if (skb_zcopy(skb))
+ 		net_zcopy_get(skb_zcopy(skb));
 -	skb_release_data(skb, SKB_CONSUMED);
 +	skb_release_data(skb, SKB_CONSUMED, false);
  
