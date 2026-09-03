@@ -1,0 +1,67 @@
+--- a/src/init/ssdk_init.c
++++ b/src/init/ssdk_init.c
+@@ -2255,11 +2255,18 @@
+ #endif
+ 
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 12, 0)) && defined(CONFIG_NET_DSA)
+-	if (dsa_user_dev_check(dev)) {
++	bool dsa_user = dsa_user_dev_check(dev);
++
++	pr_info_ratelimited("qca-ssdk: notifier event=%lu dev=%s ifindex=%d dsa_user=%d phydev=%p\n",
++		event, dev->name, dev->ifindex, dsa_user, dev->phydev);
++	if (dsa_user) {
+ 		SSDK_DEBUG("Ignoring DSA user port %s for MP PHY notification\n",
+ 			dev->name);
+ 		return NOTIFY_DONE;
+ 	}
++#else
++	pr_info_ratelimited("qca-ssdk: notifier event=%lu dev=%s ifindex=%d phydev=%p\n",
++		event, dev->name, dev->ifindex, dev->phydev);
+ #endif
+ 
+ 	ssdk_cfg_default_init(&cfg);
+@@ -2319,6 +2326,8 @@
+ 				if (dev->phydev != NULL) {
+ 					port_id = qca_ssdk_phydev_to_port(priv->device_id,
+ 						dev->phydev);
++					pr_info_ratelimited("qca-ssdk: port-resolve dev=%s ifindex=%d phy_addr=%d port=%u\n",
++						dev->name, dev->ifindex, dev->phydev->mdio.addr, port_id);
+ 					rv = p_api->adpt_port_netdev_notify_set(priv, port_id);
+ 					if (rv) {
+ 						SSDK_ERROR("netdev change notify failed\n");
+--- a/src/hsl/phy/hsl_phy.c
++++ b/src/hsl/phy/hsl_phy.c
+@@ -22,6 +22,7 @@
+ #include "hsl_dev.h"
+ /*qca808x_end*/
+ #include "ssdk_dts.h"
++#include <linux/kernel.h>
+ #if defined(ISIS) ||defined(ISISC) ||defined(GARUDA)
+ #include <f1_phy.h>
+ #endif
+@@ -504,6 +505,8 @@
+ #endif
+ 	}
+ 	SSDK_DEBUG("doesn't match port_id to specified phy_addr !\n");
++	pr_info_ratelimited("qca-ssdk: phy-port-resolve no-match dev_id=%u encoded_phy_addr=%u fallback_port=0\n",
++		dev_id, phy_addr);
+ 	return 0;
+ }
+ 
+@@ -511,11 +514,15 @@
+ qca_ssdk_phydev_to_port(a_uint32_t dev_id, struct phy_device *phydev)
+ {
+ 	a_uint32_t miibus_id = 0, phy_addr_e = 0;
++	a_uint32_t port_id;
+ 
+ 	miibus_id = ssdk_miibus_index_get(dev_id, phydev->mdio.bus);
+ 	phy_addr_e = TO_PHY_ADDR_E(phydev->mdio.addr, miibus_id);
++	port_id = qca_ssdk_phy_addr_to_port(dev_id, phy_addr_e);
++	pr_info_ratelimited("qca-ssdk: phy-resolve dev_id=%u phy_addr=%d miibus=%u encoded_phy_addr=%u port=%u\n",
++		dev_id, phydev->mdio.addr, miibus_id, phy_addr_e, port_id);
+ 
+-	return qca_ssdk_phy_addr_to_port(dev_id, phy_addr_e);
++	return port_id;
+ }
+ 
+ a_bool_t
