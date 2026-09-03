@@ -2,11 +2,14 @@
 
 usage() {
 	cat >&2 <<'EOF'
-Usage: nss-ipq5018-manual {status|normal|gmac1-sdram}
+Usage: nss-ipq5018-manual {status|normal|gmac1-sdram|ecm-on|ecm-off|ecm-status}
 
   status       show NSS modules, CPU topology, and driver parameter state
   normal       load qca-nss-drv with the firmware default memory layout
   gmac1-sdram  load qca-nss-drv with GMAC1 descriptors in SDRAM
+  ecm-on       enable the NSS ECM frontend and start ECM
+  ecm-off      stop ECM and disable it for the next boot
+  ecm-status   show ECM configuration, modules, and debugfs state
 
 Run normal and gmac1-sdram as separate boot tests. Do not change the
 descriptor placement while qca-nss-drv is already loaded.
@@ -27,6 +30,79 @@ status() {
 	fi
 }
 
+require_nss_driver() {
+	[ -d /sys/module/qca_nss_drv ] || {
+		printf 'ERROR NSS driver is not loaded; run nss-ipq5018-manual normal first\n' >&2
+		return 1
+	}
+}
+
+ecm_on() {
+	require_nss_driver || return 1
+
+	uci -q set ecm.global.acceleration_engine='nss' || {
+		printf 'ERROR unable to select the NSS ECM frontend\n' >&2
+		return 1
+	}
+	uci -q set ecm.global.enable='1' || {
+		printf 'ERROR unable to enable ECM in UCI\n' >&2
+		return 1
+	}
+	uci -q commit ecm || {
+		printf 'ERROR unable to commit ECM configuration\n' >&2
+		return 1
+	}
+
+	if ! /etc/init.d/qca-nss-ecm start; then
+		uci -q set ecm.global.enable='0'
+		uci -q commit ecm
+		printf 'ERROR qca-nss-ecm failed to start\n' >&2
+		return 1
+	fi
+	printf 'INFO NSS ECM started\n'
+}
+
+ecm_off() {
+	/etc/init.d/qca-nss-ecm stop || {
+		printf 'ERROR qca-nss-ecm failed to stop\n' >&2
+		return 1
+	}
+	uci -q set ecm.global.enable='0' || {
+		printf 'ERROR unable to disable ECM in UCI\n' >&2
+		return 1
+	}
+	uci -q commit ecm || {
+		printf 'ERROR unable to commit ECM configuration\n' >&2
+		return 1
+	}
+	printf 'INFO NSS ECM stopped and disabled\n'
+}
+
+ecm_status() {
+	printf 'ecm.enable: '
+	uci -q get ecm.global.enable 2>/dev/null || printf 'unset'
+	printf '\n'
+	printf 'ecm.acceleration_engine: '
+	uci -q get ecm.global.acceleration_engine 2>/dev/null || printf 'unset'
+	printf '\n'
+	printf 'qca_nss_drv: '
+	[ -d /sys/module/qca_nss_drv ] && printf 'loaded' || printf 'not-loaded'
+	printf '\n'
+	printf 'ecm: '
+	[ -d /sys/module/ecm ] && printf 'loaded' || printf 'not-loaded'
+	printf '\n'
+	printf 'ecm_nss_ipv4: '
+	[ -d /sys/kernel/debug/ecm/ecm_nss_ipv4 ] && printf 'present' || printf 'absent'
+	printf '\n'
+
+	if [ -d /sys/kernel/debug/ecm ]; then
+		printf 'ecm-debugfs-files:\n'
+		find /sys/kernel/debug/ecm -maxdepth 3 -type f -print 2>/dev/null | sort
+	else
+		printf 'ecm-debugfs-files: absent\n'
+	fi
+}
+
 case "${1:-}" in
 	status)
 		status
@@ -37,6 +113,15 @@ case "${1:-}" in
 	gmac1-sdram)
 		exec modprobe qca-nss-drv \
 			'meminfo_user_config=<0, gmac_tx_desc_1, SDRAM>, <0, gmac_rx_desc_1, SDRAM>'
+		;;
+	ecm-on)
+		ecm_on
+		;;
+	ecm-off)
+		ecm_off
+		;;
+	ecm-status)
+		ecm_status
 		;;
 	*)
 		usage

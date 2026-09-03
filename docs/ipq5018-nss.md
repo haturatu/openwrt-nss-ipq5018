@@ -107,10 +107,32 @@ module parameterが受け付けられない場合は、コマンドが失敗す�
 できます。
 
 ```sh
+nss-ipq5018-manual normal
+nss-ipq5018-manual ecm-on
+nss-ipq5018-manual ecm-status
+```
+
+`ecm-on`はNSS driverがロード済みの場合だけ、NSS frontendを選択してECMを起動
+します。driver未ロード時にECMが依存関係からdriverを自動ロードしないよう、init
+scriptにもガードを入れています。停止・次回起動無効化は次で行います。
+
+```sh
+nss-ipq5018-manual ecm-off
+```
+
+直接UCIを操作する場合は、同じ意味になるよう次を実行します。
+
+```sh
+uci set ecm.global.acceleration_engine='nss'
 uci set ecm.global.enable='1'
 uci commit ecm
 /etc/init.d/qca-nss-ecm start
 ```
+
+標準のsoftware/hardware flow offloadは引き続き無効にし、ECM開始後はLAN端末から
+WANへトラフィックを流して、ECM/NSSのcounterを確認します。ECMの有効化だけでは
+NSS forwarding成功とは判定せず、accelerated connection数とNSS statisticsの
+増加を確認します。
 
 失敗時はreserved memory、load address、clock/reset、IRQ、firmware ABI、GMAC1
 descriptor配置の順に切り分けます。
