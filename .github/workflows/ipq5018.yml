@@ -120,7 +120,10 @@ jobs:
           test "$(sed -n 's/^CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_linksys_mx2000=//p' .config)" = y
           grep -Eq '^CONFIG_NSS_FIRMWARE_VERSION_11_4=y$' .config
           grep -Eq '^CONFIG_PACKAGE_nss-firmware-ipq50xx=y$' .config
-          ! grep -Eq '^CONFIG_NSS_DRV_MANUAL_BRINGUP=y$' .config
+          if grep -Eq '^CONFIG_NSS_DRV_MANUAL_BRINGUP=y$' .config; then
+            echo 'ERROR: manual NSS bring-up must be disabled in the production seed' >&2
+            exit 1
+          fi
           grep -Eq '^CONFIG_CCACHE=y$' .config
           if [ "$wifi_nss" = true ]; then
             grep -Eq '^CONFIG_ATH11K_NSS_SUPPORT=y$' .config
@@ -128,10 +131,19 @@ jobs:
             grep -Eq '^CONFIG_NSS_DRV_WIFI_EXT_VDEV_ENABLE=y$' .config
             grep -Eq '^CONFIG_PACKAGE_MAC80211_NSS_SUPPORT=y$' .config
             grep -Eq '^CONFIG_ATH11K_MEM_PROFILE_512M=y$' .config
-            ! grep -Eq '^CONFIG_ATH11K_NSS_MESH_SUPPORT=y$' .config
-            ! grep -Eq '^CONFIG_PACKAGE_MAC80211_NSS_REDIRECT=y$' .config
+            if grep -Eq '^CONFIG_ATH11K_NSS_MESH_SUPPORT=y$' .config; then
+              echo 'ERROR: ath11k NSS mesh support must remain disabled for the experiment' >&2
+              exit 1
+            fi
+            if grep -Eq '^CONFIG_PACKAGE_MAC80211_NSS_REDIRECT=y$' .config; then
+              echo 'ERROR: mac80211 NSS redirect must remain disabled for ath11k-only offload' >&2
+              exit 1
+            fi
           else
-            ! grep -Eq '^CONFIG_ATH11K_NSS_SUPPORT=y$' .config
+            if grep -Eq '^CONFIG_ATH11K_NSS_SUPPORT=y$' .config; then
+              echo 'ERROR: ath11k NSS must be disabled in the production image' >&2
+              exit 1
+            fi
           fi
 
       - name: Restore workspace host tools
@@ -196,14 +208,20 @@ jobs:
           sh -n package/kernel/mac80211/files/qca-nss-pbuf.init
           sh -n target/linux/qualcommax/ipq50xx/base-files/etc/uci-defaults/90-ipq5018-nss-manual
           sh -n target/linux/qualcommax/ipq50xx/base-files/usr/sbin/nss-ipq5018-manual
-          ! grep -Fq 'ip -br' nss-setup/diagnose-ipq5018.sh
+          if grep -Fq 'ip -br' nss-setup/diagnose-ipq5018.sh; then
+            echo 'ERROR: BusyBox-incompatible ip -br remains in the diagnostic script' >&2
+            exit 1
+          fi
           grep -Fq 'ip addr show' nss-setup/diagnose-ipq5018.sh
 
       - name: Verify MX2000 staged bring-up source
         run: |
           grep -Fx '#include "ipq5018-nss.dtsi"' target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-mx2000.dts
           grep -Fq 'coherent_pool=2M clk_ignore_unused' target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-mx2000.dts
-          ! grep -Fq 'pd_ignore_unused' target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-mx2000.dts
+          if grep -Fq 'pd_ignore_unused' target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-mx2000.dts; then
+            echo 'ERROR: unsupported pd_ignore_unused must not be in the MX2000 bootargs' >&2
+            exit 1
+          fi
           grep -Fq 'NSS_DRV_MANUAL_BRINGUP' feeds/nss_packages/qca-nss-drv/Makefile
           grep -Eq "option manual_bringup[[:space:]]+'0'" feeds/nss_packages/qca-nss-drv/files/qca-nss-drv.uci
           grep -Fq "option enable '0'" feeds/nss_packages/qca-nss-ecm/files/qca-nss-ecm.uci
@@ -225,7 +243,10 @@ jobs:
           if [ "$IPQ5018_WIFI_NSS" = true ]; then
             grep -Fx '#include "ipq5018-nss-qcn6122.dtsi"' target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-mx2000.dts
           else
-            ! grep -Fx '#include "ipq5018-nss-qcn6122.dtsi"' target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-mx2000.dts
+            if grep -Fx '#include "ipq5018-nss-qcn6122.dtsi"' target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-mx2000.dts; then
+              echo 'ERROR: QCN6122 NSS overlay must not be enabled in the production image' >&2
+              exit 1
+            fi
           fi
 
       - name: Build kernel and NSS packages
