@@ -1,0 +1,79 @@
+diff --git a/qca-nss-ecm/patches/0026-ipq5018-ecm-dsa-conduit-interface-resolution.patch b/qca-nss-ecm/patches/0026-ipq5018-ecm-dsa-conduit-interface-resolution.patch
+new file mode 100644
+--- /dev/null
++++ b/qca-nss-ecm/patches/0026-ipq5018-ecm-dsa-conduit-interface-resolution.patch
+@@ -0,0 +1,74 @@
++From 7c607ae24186c3cc4d351ac841dc0961b773fd97 Mon Sep 17 00:00:00 2001
++From: haturatu <haturatu@users.noreply.github.com>
++Date: Thu, 3 Sep 2026 00:00:00 +0900
++Subject: [PATCH] ipq5018: resolve DSA user ports through NSS conduit
++
++NSS registers the physical conduit netdev, while Linux DSA exposes switch
++user ports as separate netdevs. Resolve a DSA user port through its conduit
++before giving up on the NSS interface number. This keeps the lookup generic
++for DSA-backed switches and does not encode MX2000 port numbers.
++
++Signed-off-by: haturatu <haturatu@users.noreply.github.com>
++---
++ frontends/nss/ecm_nss_common.h | 32 +++++++++++++++++++++++++++++++-
++ 1 file changed, 31 insertions(+), 1 deletion(-)
++
++diff --git a/frontends/nss/ecm_nss_common.h b/frontends/nss/ecm_nss_common.h
++index fe5199d..ebf1486 100644
++--- a/frontends/nss/ecm_nss_common.h
+++++ b/frontends/nss/ecm_nss_common.h
++@@ -32,6 +32,11 @@
++ #include <net/vxlan.h>
++ #endif
++ 
+++#include <linux/version.h>
+++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 12, 0)) && defined(CONFIG_NET_DSA)
+++#include <net/dsa.h>
+++#endif
+++
++ #include <net/xfrm.h>
++ 
++ /*
++@@ -66,6 +71,12 @@
++  */
++ static inline int32_t ecm_nss_common_get_interface_number_by_dev(struct net_device *dev)
++ {
+++	int32_t ifnum;
+++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 12, 0)) && defined(CONFIG_NET_DSA)
+++	struct net_device *conduit;
+++	int32_t conduit_ifnum;
+++#endif
+++
++ 	/*
++ 	 * nss_interface_num for all IPsec tunnels will always be the one specific to acceleration engine.
++ 	 */
++@@ -79,7 +90,26 @@
++ 	}
++ #endif
++ 
++-	return nss_cmn_get_interface_number_by_dev(dev);
+++	ifnum = nss_cmn_get_interface_number_by_dev(dev);
+++
+++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 12, 0)) && defined(CONFIG_NET_DSA)
+++	if (dsa_user_dev_check(dev) && dev->dsa_ptr) {
+++		conduit = dsa_port_to_conduit(dev->dsa_ptr);
+++		conduit_ifnum = -1;
+++		if (conduit && conduit != dev)
+++			conduit_ifnum = nss_cmn_get_interface_number_by_dev(conduit);
+++
+++		DEBUG_TRACE("DSA/NSS interface resolve: dev=%s ifindex=%d initial_ae_ifnum=%d conduit=%s conduit_ifindex=%d ae_ifnum=%d\n",
+++			dev->name, dev->ifindex, ifnum,
+++			conduit ? conduit->name : "-",
+++			conduit ? conduit->ifindex : -1, conduit_ifnum);
+++
+++		if (ifnum < 0)
+++			ifnum = conduit_ifnum;
+++	}
+++#endif
+++
+++	return ifnum;
++ }
++ 
++ /*
++-- 
++2.40.1
