@@ -67,3 +67,22 @@ for patch in "$patch_dir"/*.patch; do
 		exit 1
 	fi
 done
+
+# A restored feed cache may contain an older version of the stacked patch.
+# Keep the production default deterministic even when the patch itself is
+# already present and only its UCI default differs.
+driver_uci="$feed_dir/qca-nss-drv/files/qca-nss-drv.uci"
+if grep -Fq 'NSS_DRV_MANUAL_BRINGUP' "$feed_dir/qca-nss-drv/Config.in" &&
+	[ -f "$driver_uci" ]; then
+	if grep -Eq '^[[:space:]]*option[[:space:]]+manual_bringup[[:space:]]+' "$driver_uci"; then
+		sed -i -E "s/^([[:space:]]*option[[:space:]]+manual_bringup[[:space:]]+).*/\1'0'/" "$driver_uci"
+	else
+		printf "\toption manual_bringup\t'0'\n" >> "$driver_uci"
+	fi
+	if grep -Eq "^[[:space:]]*option[[:space:]]+manual_bringup[[:space:]]+'0'[[:space:]]*$" "$driver_uci"; then
+		info "ensured qca-nss-drv manual_bringup=0"
+	else
+		error "cannot set qca-nss-drv manual_bringup=0"
+		exit 1
+	fi
+fi
