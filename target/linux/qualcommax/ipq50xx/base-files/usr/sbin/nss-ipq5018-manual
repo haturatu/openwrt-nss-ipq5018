@@ -1,0 +1,44 @@
+#!/bin/sh
+
+usage() {
+	cat >&2 <<'EOF'
+Usage: nss-ipq5018-manual {status|normal|gmac1-sdram}
+
+  status       show NSS modules, CPU topology, and driver parameter state
+  normal       load qca-nss-drv with the firmware default memory layout
+  gmac1-sdram  load qca-nss-drv with GMAC1 descriptors in SDRAM
+
+Run normal and gmac1-sdram as separate boot tests. Do not change the
+descriptor placement while qca-nss-drv is already loaded.
+EOF
+	exit 2
+}
+
+status() {
+	printf 'online-cpus: '
+	cat /sys/devices/system/cpu/online 2>/dev/null || printf 'unknown\n'
+	printf 'modules:\n'
+	lsmod 2>/dev/null | grep -Ei 'qca[-_]nss|ecm' || true
+	if [ -r /sys/module/qca_nss_drv/parameters/meminfo_user_config ]; then
+		printf 'meminfo_user_config: '
+		cat /sys/module/qca_nss_drv/parameters/meminfo_user_config
+	else
+		printf 'meminfo_user_config: driver not loaded\n'
+	fi
+}
+
+case "${1:-}" in
+	status)
+		status
+		;;
+	normal)
+		exec modprobe qca-nss-drv
+		;;
+	gmac1-sdram)
+		exec modprobe qca-nss-drv \
+			'meminfo_user_config=<0, gmac_tx_desc_1, SDRAM>, <0, gmac_rx_desc_1, SDRAM>'
+		;;
+	*)
+		usage
+		;;
+esac

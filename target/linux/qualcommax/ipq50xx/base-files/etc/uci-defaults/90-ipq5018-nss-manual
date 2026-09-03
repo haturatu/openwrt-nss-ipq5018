@@ -1,0 +1,11 @@
+#!/bin/sh
+
+[ "$(board_name)" = "linksys,mx2000" ] || exit 0
+
+# The MX2000 experimental image keeps ECM disabled until NSS core and GMAC1
+# takeover have been checked manually. This is intentionally a first-boot
+# default so an existing config cannot silently re-enable ECM on the test image.
+uci -q set ecm.global.enable='0'
+uci -q commit ecm
+
+exit 0

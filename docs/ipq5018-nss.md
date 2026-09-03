@@ -5,7 +5,7 @@ OpenWrt `openwrt-25.12` の先端へ追従したIPQ5018 NSS bring-up用の作業
 NSS関連コードとfirmwareはOpenWrt upstreamには含まれないため、qosmioの
 `nss-packages` feedを固定して利用します。
 
-## 2026-09-02時点の実測
+## 2026-09-02時点の実測（NSS無効baseline）
 
 対象機は純正firmwareではなく、公式OpenWrt 25.12.5を起動しています。
 
@@ -17,15 +17,16 @@ NSS関連コードとfirmwareはOpenWrt upstreamには含まれないため、qo
 | Linux | 6.12.94 |
 | target | `qualcommax/ipq50xx` |
 | Ethernet dataplane | `qca_nss_dp` と `qca_ssdk` がロード済み |
-| NSS core | `qca_nss_drv` は未ロード |
-| ECM | `qca_nss_ecm` は未ロード |
+| NSS core | baselineでは `qca_nss_drv` 未ロード |
+| ECM | baselineでは `qca_nss_ecm` 未ロード |
 | NSS firmware | `/lib/firmware/qca-nss*.bin` は未配置 |
 | 外部switch | QCA8337、CPU port 6、SGMII固定1Gbps |
 | NSS-DP | `dp2`、register `0x39d00000`、GIC SPI 141、Linux IRQ 43 |
 
-現在のOpenWrt DTには `dp2` とQCA8337の経路がある一方、NSS core用の
-`nss-common`/`nss0`と、firmware load用の`nss_region`はありません。これは
-現行公式イメージがNSS-DPまでで、NSS core/ECMを組み込んでいないためです。
+MX2000の実験用イメージでは、`dp2`/QCA8337経路を保ったままNSS core用の
+`nss-common`/`nss0`とfirmware load用の`nss_region`を追加します。ただし
+`qca-nss-drv`はkmodloaderから外し、ECMも自動起動しません。これにより、
+NSS firmware起動後のGMAC1引き継ぎがWAN/LANを壊すかを手動で分離できます。
 
 現在の設定ではOpenWrt標準のsoftware/hardware flow offloadは無効です。NSSの
 測定時もこの状態を維持し、NSSと標準flow offloadの二重適用を避けます。
@@ -72,9 +73,11 @@ Wi-Fi NSSはNSS-DPとECMが安定した後の別フェーズで有効化しま�
 NSSを有効にしない公式OpenWrt相当で、起動、WAN/LAN、QCA8337、2.4 GHz、5 GHz、
 sysupgrade、dual partitionを確認します。
 
-### Phase 1: NSS core
+### Phase 1: NSS core manual bring-up
 
-`nss-firmware-ipq50xx` と `kmod-qca-nss-drv`を有効にし、次を確認します。
+`nss-firmware-ipq50xx` と `kmod-qca-nss-drv`はイメージに含まれますが、
+driverのautoloadとECMのautostartは無効です。まずLinux/DSAのWAN/LANが生きた
+状態で次を確認します。
 
 ```text
 dmesg | grep -Ei 'nss|firmware|qca'
@@ -83,8 +86,34 @@ cat /proc/interrupts
 cat /proc/modules
 ```
 
-期待値はfirmware load、NSS core 0 initialized、driver probe完了です。失敗時は
-reserved memory、load address、clock/reset、IRQ、firmware ABIの順に切り分けます。
+SSH後のA/Bテストは、再起動を挟んで別々に実施します。
+
+```sh
+nss-ipq5018-manual status
+nss-ipq5018-manual normal
+
+# 別の起動で実施するGMAC1 descriptor配置テスト
+nss-ipq5018-manual gmac1-sdram
+```
+
+`normal`はfirmware既定の配置、`gmac1-sdram`は
+`gmac_tx_desc_1`/`gmac_rx_desc_1`だけをSDRAMへ変更します。各テスト直後に
+`dmesg`, `ip -br link`, WAN疎通、`/proc/interrupts`を保存します。overrideで
+module parameterが受け付けられない場合は、コマンドが失敗するため、その結果を
+成功扱いにしません。firmware load、NSS core 0 initialized、driver probe完了が
+得られた後に、GMAC1/`dp2`のlinkが維持されるかを判定します。
+
+初回はECMを有効化しません。NSS core/DMAの状態が確定した後、次で明示的に有効化
+できます。
+
+```sh
+uci set ecm.global.enable='1'
+uci commit ecm
+/etc/init.d/qca-nss-ecm start
+```
+
+失敗時はreserved memory、load address、clock/reset、IRQ、firmware ABI、GMAC1
+descriptor配置の順に切り分けます。
 
 ### Phase 2: NSS-DP and QCA8337
 
@@ -105,7 +134,7 @@ IPv6、bridge/VLAN、PPPoE、SQM、最後にath11k Wi-Fi NSSを個別に追加�
 ## 更新運用
 
 ```text
-origin   git@github.com:haturatu/openwrt-nss-ipq5018.git  (private)
+origin   https://github.com/haturatu/openwrt-nss-ipq5018.git  (public fork)
 qosmio   https://github.com/qosmio/openwrt-ipq.git
 upstream https://github.com/openwrt/openwrt.git
 ```
