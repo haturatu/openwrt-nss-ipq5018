@@ -18,6 +18,7 @@ on:
   push:
     branches:
       - feat/nss-ipq5018
+      - feat/nss-ipq5018-autoload-wifi
       - 25.12-nss
     paths:
       - '.github/workflows/ipq5018.yml'
@@ -33,6 +34,12 @@ on:
       - 'Makefile'
       - 'scripts/**'
   workflow_dispatch:
+    inputs:
+      wifi_nss:
+        description: Build the experimental ath11k NSS image
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -101,13 +108,31 @@ jobs:
       - name: Generate IPQ5018 config
         run: |
           cp nss-setup/config-ipq5018.seed .config
+          wifi_nss='${{ inputs.wifi_nss }}'
+          if [ "$wifi_nss" = true ]; then
+            nss-setup/enable-ipq5018-wifi-nss.sh .config \
+              target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-mx2000.dts
+          else
+            wifi_nss=false
+          fi
+          echo "IPQ5018_WIFI_NSS=$wifi_nss" >> "$GITHUB_ENV"
           make defconfig
           test "$(sed -n 's/^CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_linksys_mx2000=//p' .config)" = y
-          ! grep -Eq '^CONFIG_ATH11K_NSS_SUPPORT=y$' .config
           grep -Eq '^CONFIG_NSS_FIRMWARE_VERSION_11_4=y$' .config
           grep -Eq '^CONFIG_PACKAGE_nss-firmware-ipq50xx=y$' .config
-          grep -Eq '^CONFIG_NSS_DRV_MANUAL_BRINGUP=y$' .config
+          ! grep -Eq '^CONFIG_NSS_DRV_MANUAL_BRINGUP=y$' .config
           grep -Eq '^CONFIG_CCACHE=y$' .config
+          if [ "$wifi_nss" = true ]; then
+            grep -Eq '^CONFIG_ATH11K_NSS_SUPPORT=y$' .config
+            grep -Eq '^CONFIG_NSS_DRV_WIFIOFFLOAD_ENABLE=y$' .config
+            grep -Eq '^CONFIG_NSS_DRV_WIFI_EXT_VDEV_ENABLE=y$' .config
+            grep -Eq '^CONFIG_PACKAGE_MAC80211_NSS_SUPPORT=y$' .config
+            grep -Eq '^CONFIG_ATH11K_MEM_PROFILE_512M=y$' .config
+            ! grep -Eq '^CONFIG_ATH11K_NSS_MESH_SUPPORT=y$' .config
+            ! grep -Eq '^CONFIG_PACKAGE_MAC80211_NSS_REDIRECT=y$' .config
+          else
+            ! grep -Eq '^CONFIG_ATH11K_NSS_SUPPORT=y$' .config
+          fi
 
       - name: Restore workspace host tools
         id: host-tools-cache
@@ -174,10 +199,10 @@ jobs:
       - name: Verify MX2000 staged bring-up source
         run: |
           grep -Fx '#include "ipq5018-nss.dtsi"' target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-mx2000.dts
-          ! grep -Fx '#include "ipq5018-nss-qcn6122.dtsi"' target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-mx2000.dts
           grep -Fq 'coherent_pool=2M clk_ignore_unused' target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-mx2000.dts
           ! grep -Fq 'pd_ignore_unused' target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-mx2000.dts
           grep -Fq 'NSS_DRV_MANUAL_BRINGUP' feeds/nss_packages/qca-nss-drv/Makefile
+          grep -Eq "option manual_bringup[[:space:]]+'0'" feeds/nss_packages/qca-nss-drv/files/qca-nss-drv.uci
           grep -Fq "option enable '0'" feeds/nss_packages/qca-nss-ecm/files/qca-nss-ecm.uci
           grep -Fq "acceleration_engine='nss'" target/linux/qualcommax/ipq50xx/base-files/etc/uci-defaults/90-ipq5018-nss-manual
           grep -Fq 'ecm-on' target/linux/qualcommax/ipq50xx/base-files/usr/sbin/nss-ipq5018-manual
@@ -194,6 +219,11 @@ jobs:
           grep -Fq 'qca-ssdk: phy-resolve' package/kernel/qca-ssdk/patches/131-mp-trace-dsa-port-resolution.patch
           grep -Fq 'qca_ssdk_phydev_to_port_valid' package/kernel/qca-ssdk/patches/132-mp-ignore-unmapped-phy-notifications.patch
           grep -Fq 'skip unmapped MP PHY notification' package/kernel/qca-ssdk/patches/132-mp-ignore-unmapped-phy-notifications.patch
+          if [ "$IPQ5018_WIFI_NSS" = true ]; then
+            grep -Fx '#include "ipq5018-nss-qcn6122.dtsi"' target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-mx2000.dts
+          else
+            ! grep -Fx '#include "ipq5018-nss-qcn6122.dtsi"' target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-mx2000.dts
+          fi
 
       - name: Build kernel and NSS packages
         run: |
@@ -201,6 +231,10 @@ jobs:
             package/feeds/nss_packages/qca-nss-drv/compile \
             package/feeds/nss_packages/qca-nss-ecm/compile \
             -j"$(nproc)" CONFIG_DOWNLOAD_TOOL_CUSTOM=aria2c V=s
+          if [ "$IPQ5018_WIFI_NSS" = true ]; then
+            make package/kernel/mac80211/compile \
+              -j"$(nproc)" CONFIG_DOWNLOAD_TOOL_CUSTOM=aria2c V=s
+          fi
 
       - name: Build IPQ5018 firmware
         if: github.event_name != 'pull_request'
@@ -222,8 +256,11 @@ jobs:
           test -n "$manifest"
           grep -Eq '^kmod-qca-nss-dp([[:space:]]|$)' "$manifest"
           grep -Eq '^kmod-qca-nss-drv([[:space:]]|$)' "$manifest"
-          grep -Eq '^kmod-qca-nss-ecm([[:space:]]|$)' "$manifest"
-          grep -Eq '^nss-firmware-ipq50xx([[:space:]]|$)' "$manifest"
+            grep -Eq '^kmod-qca-nss-ecm([[:space:]]|$)' "$manifest"
+            grep -Eq '^nss-firmware-ipq50xx([[:space:]]|$)' "$manifest"
+            if [ "$IPQ5018_WIFI_NSS" = true ]; then
+              grep -Eq '^kmod-ath11k([_-]|[[:space:]])' "$manifest"
+            fi
 
       - name: Collect build metadata
         if: always()
@@ -232,6 +269,7 @@ jobs:
             echo "commit=$(git rev-parse HEAD)"
             echo "date=$(date -u +%FT%TZ)"
             echo "event=${{ github.event_name }}"
+            echo "wifi_nss=${IPQ5018_WIFI_NSS:-false}"
             echo "target=qualcommax/ipq50xx"
             echo "device=linksys_mx2000"
             echo "workflow_run=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
