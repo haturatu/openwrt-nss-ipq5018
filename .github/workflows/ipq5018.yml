@@ -76,9 +76,9 @@ jobs:
           path: |
             feeds
             package/feeds
-          key: openwrt-feeds-v2-${{ github.repository }}-${{ runner.os }}-${{ hashFiles('feeds.conf.default') }}
+          key: openwrt-feeds-v3-${{ github.repository }}-${{ runner.os }}-${{ hashFiles('feeds.conf.default', 'nss-setup/patches/nss_packages/**') }}
           restore-keys: |
-            openwrt-feeds-v2-${{ github.repository }}-${{ runner.os }}-
+            openwrt-feeds-v3-${{ github.repository }}-${{ runner.os }}-
 
       - name: Update and install feeds
         if: steps.feeds-cache.outputs.cache-hit != 'true'
@@ -93,6 +93,11 @@ jobs:
           test -f feeds/nss_packages/qca-nss-ecm/Makefile
           test -f feeds/nss_packages/firmware/nss-firmware/Makefile
 
+      - name: Apply local NSS feed patches
+        run: |
+          sh -n nss-setup/apply-feed-patches.sh
+          nss-setup/apply-feed-patches.sh
+
       - name: Generate IPQ5018 config
         run: |
           cp nss-setup/config-ipq5018.seed .config
@@ -101,6 +106,7 @@ jobs:
           ! grep -Eq '^CONFIG_ATH11K_NSS_SUPPORT=y$' .config
           grep -Eq '^CONFIG_NSS_FIRMWARE_VERSION_11_4=y$' .config
           grep -Eq '^CONFIG_PACKAGE_nss-firmware-ipq50xx=y$' .config
+          grep -Eq '^CONFIG_NSS_DRV_MANUAL_BRINGUP=y$' .config
           grep -Eq '^CONFIG_CCACHE=y$' .config
 
       - name: Restore workspace host tools
@@ -157,7 +163,18 @@ jobs:
         run: make toolchain/install -j"$(nproc)" CONFIG_DOWNLOAD_TOOL_CUSTOM=aria2c V=s
 
       - name: Check diagnostic script syntax
-        run: sh -n nss-setup/diagnose-ipq5018.sh
+        run: |
+          sh -n nss-setup/diagnose-ipq5018.sh
+          sh -n target/linux/qualcommax/ipq50xx/base-files/etc/uci-defaults/90-ipq5018-nss-manual
+          sh -n target/linux/qualcommax/ipq50xx/base-files/usr/sbin/nss-ipq5018-manual
+
+      - name: Verify MX2000 staged bring-up source
+        run: |
+          grep -Fx '#include "ipq5018-nss.dtsi"' target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-mx2000.dts
+          ! grep -Fx '#include "ipq5018-nss-qcn6122.dtsi"' target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-mx2000.dts
+          grep -Fq 'clk_ignore_unused pd_ignore_unused' target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-mx2000.dts
+          grep -Fq 'NSS_DRV_MANUAL_BRINGUP' feeds/nss_packages/qca-nss-drv/Makefile
+          grep -Fq "option enable '0'" feeds/nss_packages/qca-nss-ecm/files/qca-nss-ecm.uci
 
       - name: Build kernel and NSS packages
         run: |
@@ -169,6 +186,25 @@ jobs:
       - name: Build IPQ5018 firmware
         if: github.event_name != 'pull_request'
         run: make -j"$(nproc)" CONFIG_DOWNLOAD_TOOL_CUSTOM=aria2c V=s
+
+      - name: Verify MX2000 NSS DTB and package manifest
+        if: github.event_name != 'pull_request' && success()
+        run: |
+          dtc_bin=$(find build_dir/target-* -type f -path '*/linux-*/scripts/dtc/dtc' -perm -111 -print -quit)
+          dtb=$(find build_dir/target-* -type f -name 'image-ipq5018-mx2000.dtb' -print -quit)
+          test -n "$dtc_bin"
+          test -n "$dtb"
+          "$dtc_bin" -I dtb -O dts -o "$RUNNER_TEMP/mx2000.dts" "$dtb"
+          grep -Fq 'nss-common' "$RUNNER_TEMP/mx2000.dts"
+          grep -Fq 'nss@40000000' "$RUNNER_TEMP/mx2000.dts"
+          grep -Fq 'memory@40000000' "$RUNNER_TEMP/mx2000.dts"
+          grep -Fq '0x39d00000' "$RUNNER_TEMP/mx2000.dts"
+          manifest=$(find bin/targets/qualcommax/ipq50xx -maxdepth 1 -name '*.manifest' -print -quit)
+          test -n "$manifest"
+          grep -Eq '^kmod-qca-nss-dp([[:space:]]|$)' "$manifest"
+          grep -Eq '^kmod-qca-nss-drv([[:space:]]|$)' "$manifest"
+          grep -Eq '^kmod-qca-nss-ecm([[:space:]]|$)' "$manifest"
+          grep -Eq '^nss-firmware-ipq50xx([[:space:]]|$)' "$manifest"
 
       - name: Collect build metadata
         if: always()

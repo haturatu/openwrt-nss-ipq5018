@@ -1,0 +1,132 @@
+diff --git a/qca-nss-ecm/files/qca-nss-ecm.init b/qca-nss-ecm/files/qca-nss-ecm.init
+index 8fc3379..f0815db 100644
+--- a/qca-nss-ecm/files/qca-nss-ecm.init
++++ b/qca-nss-ecm/files/qca-nss-ecm.init
+@@ -22,6 +22,27 @@
+ START=26
+ USE_PROCD=1
+ 
++write_value_if_available() {
++  local file="$1" value="$2"
++
++  [ -w "$file" ] || return 0
++  if ! printf '%s\n' "$value" > "$file"; then
++    logger -p user.warn -t qca-nss-ecm "Failed to write $file"
++  fi
++}
++
++set_conntrack_events() {
++  write_value_if_available /proc/sys/net/netfilter/nf_conntrack_events "$1"
++}
++
++set_nss_redirect() {
++  [ -d /sys/kernel/debug/ecm/ecm_nss_ipv4 ] || return 0
++  [ -w /proc/sys/dev/nss/general/redirect ] || return 0
++  if ! sysctl -w "dev.nss.general.redirect=$1" >/dev/null 2>&1; then
++    logger -p user.warn -t qca-nss-ecm "Failed to set NSS redirect=$1"
++  fi
++}
++
+ sysctl_update() {
+   local name value file
+ 
+@@ -126,7 +147,7 @@ load_ecm() {
+     modinfo ecm | awk '/depends/{gsub(",","\n",$NF);print $NF}' | xargs -r -n 1 modprobe
+     set_front_end $get_front_end_mode
+     modprobe ecm
+-    echo 1 > /sys/kernel/debug/ecm/ecm_classifier_default/accel_delay_pkts
++    write_value_if_available /sys/kernel/debug/ecm/ecm_classifier_default/accel_delay_pkts 1
+   }
+ 
+   # shellcheck disable=1091
+@@ -135,14 +156,14 @@ load_ecm() {
+   disable_offload
+ 
+   #Flushout stale accelerated connections if any
+-  echo 1 > /sys/kernel/debug/ecm/ecm_db/defunct_all
+-  echo f > /proc/net/nf_conntrack
++  write_value_if_available /sys/kernel/debug/ecm/ecm_db/defunct_all 1
++  write_value_if_available /proc/net/nf_conntrack f
+ 
+   # Set conntrack event mode to 1 for 6.1 kernel to get the conntrack events from ECM
+   local kernel_major
+   kernel_major=$(uname -r | cut -d. -f1)
+   if [ "$kernel_major" -eq 6 ]; then
+-    echo 1 > /proc/sys/net/netfilter/nf_conntrack_events
++    set_conntrack_events 1
+   fi
+ }
+ 
+@@ -153,21 +174,21 @@ unload_ecm() {
+   local kernel_major
+   kernel_major="$(uname -r | cut -d. -f1)"
+   if [ "$kernel_major" -eq 6 ]; then
+-    echo 2 > /proc/sys/net/netfilter/nf_conntrack_events
++    set_conntrack_events 2
+   fi
+ 
+   if [ -d /sys/module/ecm ]; then
+     #
+     # Stop ECM frontends
+     #
+-    echo 1 > /sys/kernel/debug/ecm/front_end_ipv4_stop
+-    echo 1 > /sys/kernel/debug/ecm/front_end_ipv6_stop
++    write_value_if_available /sys/kernel/debug/ecm/front_end_ipv4_stop 1
++    write_value_if_available /sys/kernel/debug/ecm/front_end_ipv6_stop 1
+ 
+     #
+     # Defunct the connections
+     #
+-    echo 1 > /sys/kernel/debug/ecm/ecm_db/defunct_all
+-    echo f > /proc/net/nf_conntrack
++    write_value_if_available /sys/kernel/debug/ecm/ecm_db/defunct_all 1
++    write_value_if_available /proc/net/nf_conntrack f
+ 
+     sleep 1
+     rmmod ecm
+@@ -184,6 +205,15 @@ reload_service() {
+ }
+ 
+ start_service() {
++  local enabled
++
++  config_load ecm
++  config_get_bool enabled global enable 0
++  [ "$enabled" -eq 1 ] || {
++    logger -t qca-nss-ecm "ECM autostart disabled; set ecm.global.enable=1 to enable"
++    return 0
++  }
++
+   load_ecm
+ 
+   disable_packet_steering
+@@ -196,7 +226,7 @@ start_service() {
+   fi
+ 
+   # If the acceleration engine is NSS, enable wifi redirect
+-  [ -d /sys/kernel/debug/ecm/ecm_nss_ipv4 ] && sysctl -w dev.nss.general.redirect=1
++  set_nss_redirect 1
+ 
+   if [ -d /sys/module/qca_ovsmgr ]; then
+     insmod ecm_ovs
+@@ -210,7 +240,7 @@ stop_service() {
+   fi
+ 
+   # If the acceleration engine is NSS, disable wifi redirect
+-  [ -d /sys/kernel/debug/ecm/ecm_nss_ipv4 ] && sysctl -w dev.nss.general.redirect=0
++  set_nss_redirect 0
+ 
+   if [ -d /sys/module/ecm_ovs ]; then
+     rmmod ecm_ovs
+diff --git a/qca-nss-ecm/files/qca-nss-ecm.uci b/qca-nss-ecm/files/qca-nss-ecm.uci
+index d51246d..72973f3 100644
+--- a/qca-nss-ecm/files/qca-nss-ecm.uci
++++ b/qca-nss-ecm/files/qca-nss-ecm.uci
+@@ -1,5 +1,6 @@
+ config ecm 'global'
+ 	option acceleration_engine 'auto'
++	option enable '0'
+ 
+ config ecm 'general'
+ 	option disable_offloads '0'
+
