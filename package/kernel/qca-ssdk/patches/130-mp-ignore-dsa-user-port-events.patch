@@ -1,0 +1,48 @@
+From 7c607ae24186c3cc4d351ac841dc0961b773fd97 Mon Sep 17 00:00:00 2001
+From: haturatu <haturatu@users.noreply.github.com>
+Date: Thu, 3 Sep 2026 00:00:00 +0900
+Subject: [PATCH] mp: ignore DSA user port events in SSDK notifier
+
+QCA8337 user ports are Linux DSA netdevs and are managed by the DSA switch
+driver. They do not represent IPQ5018 MP PHY ports in the SSDK port bitmap.
+Passing those netdevs to qca_ssdk_phydev_to_port() returns port 0 and causes
+spurious SSDK notification failures. Leave DSA user port link handling to
+the DSA driver and keep the SSDK notifier for MP PHY netdevs.
+
+Signed-off-by: haturatu <haturatu@users.noreply.github.com>
+---
+ src/init/ssdk_init.c | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/src/init/ssdk_init.c b/src/init/ssdk_init.c
+index bb4f3f0..0000000 100644
+--- a/src/init/ssdk_init.c
++++ b/src/init/ssdk_init.c
+@@ -43,7 +43,10 @@
+ #include <linux/etherdevice.h>
+ /*qca808x_start*/
+ #include <linux/phy.h>
+ #include <linux/mdio.h>
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 12, 0)) && defined(CONFIG_NET_DSA)
++#include <net/dsa.h>
++#endif
+ /*qca808x_end*/
+ #include <linux/clk.h>
+ #include <linux/delay.h>
+@@ -2250,6 +2254,14 @@ static int ssdk_dev_event(struct notifier_block *this, unsigned long event, void *ptr)
+ 	struct net_device *dev = (struct net_device *)ptr;
+ #endif
+ 
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 12, 0)) && defined(CONFIG_NET_DSA)
++	if (dsa_user_dev_check(dev)) {
++		SSDK_DEBUG("Ignoring DSA user port %s for MP PHY notification\n",
++			dev->name);
++		return NOTIFY_DONE;
++	}
++#endif
++
+ 	ssdk_cfg_default_init(&cfg);
+ 	rv = chip_ver_get(0, &cfg);
+ 	if (rv) {
+-- 
+2.40.1
