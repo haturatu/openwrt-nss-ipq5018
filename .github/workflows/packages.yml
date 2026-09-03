@@ -30,14 +30,117 @@ concurrency:
 
 jobs:
   build-packages:
-    name: Build all core packages for selected target
+    name: Build core packages (${{ matrix.target }}/${{ matrix.subtarget }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86
+            subtarget: 64
+            kernel: k6.12
+          - target: malta
+            subtarget: be
+            kernel: k6.12
     permissions:
       contents: read
-      packages: read
-      actions: write
-    secrets:
-      ccache_s3_endpoint: ${{ secrets.CCACHE_S3_ENDPOINT }}
-      ccache_s3_bucket: ${{ secrets.CCACHE_S3_BUCKET }}
-      ccache_s3_access_key: ${{ secrets.CCACHE_S3_ACCESS_KEY }}
-      ccache_s3_secret_key: ${{ secrets.CCACHE_S3_SECRET_KEY }}
-    uses: openwrt/actions-shared-workflows/.github/workflows/packages.yml@main
+
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            aria2 autoconf automake bison build-essential \
+            ccache clang flex g++ gawk gettext git \
+            libncurses-dev libssl-dev patch perl python3 \
+            rsync unzip wget xsltproc zlib1g-dev
+
+      - name: Cache downloads
+        uses: actions/cache@v4
+        with:
+          path: dl
+          key: openwrt-dl-v2-${{ github.repository }}-${{ hashFiles('feeds.conf.default', 'include/download.mk') }}
+          restore-keys: |
+            openwrt-dl-v2-${{ github.repository }}-
+
+      - name: Restore workspace host tools
+        id: host-tools-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            staging_dir/host
+            build_dir/host
+          key: openwrt-hosttools-v3-${{ github.repository }}-${{ runner.os }}-${{ hashFiles('tools/**', 'include/host-build.mk', 'include/host-compile.mk', 'include/prereq-build.mk', 'scripts/ext-tools.sh') }}
+          restore-keys: |
+            openwrt-hosttools-v3-${{ github.repository }}-${{ runner.os }}-
+
+      - name: Build workspace host tools
+        if: steps.host-tools-cache.outputs.cache-hit != 'true'
+        run: |
+          rm -rf -- staging_dir/host build_dir/host
+          make tools/install -j"$(nproc)" CONFIG_DOWNLOAD_TOOL_CUSTOM=aria2c V=s
+
+      - name: Verify workspace host tools
+        run: |
+          test -d staging_dir/host
+          test ! -L staging_dir/host
+          test ! -L build_dir/host
+          test -x staging_dir/host/bin/autom4te
+          staging_dir/host/bin/autom4te --version
+
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: .ccache
+          key: openwrt-ccache-v3-packages-${{ github.repository }}-${{ matrix.target }}-${{ matrix.subtarget }}-${{ matrix.kernel }}-${{ github.run_id }}
+          restore-keys: |
+            openwrt-ccache-v3-packages-${{ github.repository }}-${{ matrix.target }}-${{ matrix.subtarget }}-${{ matrix.kernel }}-
+
+      - name: Configure build
+        run: |
+          cat >> .config <<EOF
+          CONFIG_ALL=y
+          CONFIG_ALL_KMODS=y
+          CONFIG_DEVEL=y
+          CONFIG_AUTOREMOVE=y
+          CONFIG_CCACHE=y
+          CONFIG_KERNEL_WERROR=y
+          CONFIG_TARGET_${{ matrix.target }}=y
+          CONFIG_TARGET_${{ matrix.target }}_${{ matrix.subtarget }}=y
+          EOF
+          make defconfig
+
+      - name: Restore toolchain
+        id: toolchain-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            staging_dir/toolchain-*
+            build_dir/toolchain-*
+          key: openwrt-toolchain-v2-${{ github.repository }}-${{ matrix.target }}-${{ matrix.subtarget }}-${{ hashFiles('toolchain/**', 'include/toolchain-build.mk', 'target/linux/**/Makefile') }}
+          restore-keys: |
+            openwrt-toolchain-v2-${{ github.repository }}-${{ matrix.target }}-${{ matrix.subtarget }}-
+
+      - name: Build toolchain
+        if: steps.toolchain-cache.outputs.cache-hit != 'true'
+        run: make toolchain/install -j"$(nproc)" BUILD_LOG=1 V=s
+
+      - name: Build all core packages
+        run: make -j"$(nproc)" BUILD_LOG=1 CONFIG_DOWNLOAD_TOOL_CUSTOM=aria2c V=s
+
+      - name: Upload build diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-package-build-logs-${{ matrix.target }}-${{ matrix.subtarget }}-${{ github.sha }}
+          if-no-files-found: ignore
+          retention-days: 7
+          path: |
+            logs/**
+            tmp/**/compile.txt
