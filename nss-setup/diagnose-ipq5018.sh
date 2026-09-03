@@ -61,11 +61,30 @@ dump_ecm_counters() {
 		name=${file##*/}
 		case "$name" in
 			*accelerated_count|*tcp_accelerated_count|*udp_accelerated_count|\
-			*connection_count|*pending_count|*fail*|*nack*|*exception*|*backend*)
+			*connection_count|*pending_count|*fail*|*nack*|*exception*|*backend*|\
+			*interface_identifier|*ae_interface_identifier|*accel_mode|*can_accel)
 				relative=${file#"$ecm_dir"/}
 				info "ecm-counter=$relative value=$(read_first_line "$file")"
 				;;
 		esac
+	done
+}
+
+dump_resolution_trace() {
+	info 'ECM/SSDK resolution trace:'
+	if ! command -v dmesg >/dev/null 2>&1; then
+		warn 'dmesg unavailable for ECM/SSDK resolution trace'
+		return 0
+	fi
+
+	trace=$(dmesg | grep -E 'ECM-(DSA|NSS):|qca-ssdk:' || true)
+	if [ -z "$trace" ]; then
+		warn 'no ECM/SSDK resolution trace lines'
+		return 0
+	fi
+
+	printf '%s\n' "$trace" | while IFS= read -r line; do
+		debug "resolution-trace=$line"
 	done
 }
 
@@ -142,6 +161,8 @@ if command -v dmesg >/dev/null 2>&1; then
 else
 	warn 'dmesg unavailable'
 fi
+
+dump_resolution_trace
 
 info 'relevant memory map:'
 if [ -r /proc/iomem ]; then

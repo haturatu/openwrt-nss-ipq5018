@@ -183,7 +183,12 @@ jobs:
           grep -Fq 'NSS driver is not loaded; refusing to start ECM' feeds/nss_packages/qca-nss-ecm/files/qca-nss-ecm.init
           grep -Fq 'ECM node readback mismatch' feeds/nss_packages/qca-nss-ecm/files/qca-nss-ecm.init
           grep -Fq 'dsa_port_to_conduit' feeds/nss_packages/qca-nss-ecm/patches/0026-ipq5018-ecm-dsa-conduit-interface-resolution.patch
+          grep -Fq 'ECM-DSA: dev=' feeds/nss_packages/qca-nss-ecm/patches/0027-ipq5018-ecm-dsa-resolution-trace.patch
+          grep -Fq 'ECM-NSS: interface-establish' feeds/nss_packages/qca-nss-ecm/patches/0028-ipq5018-ecm-rule-resolution-trace.patch
+          grep -Fq 'ECM-NSS: rule-submit' feeds/nss_packages/qca-nss-ecm/patches/0028-ipq5018-ecm-rule-resolution-trace.patch
           grep -Fq 'dsa_user_dev_check' package/kernel/qca-ssdk/patches/130-mp-ignore-dsa-user-port-events.patch
+          grep -Fq 'qca-ssdk: notifier' package/kernel/qca-ssdk/patches/131-mp-trace-dsa-port-resolution.patch
+          grep -Fq 'qca-ssdk: phy-resolve' package/kernel/qca-ssdk/patches/131-mp-trace-dsa-port-resolution.patch
 
       - name: Build kernel and NSS packages
         run: |
