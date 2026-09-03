@@ -1,0 +1,18 @@
+diff --git a/qca-nss-ecm/patches/0029-ipq5018-ecm-dsa-conduit-helper.patch b/qca-nss-ecm/patches/0029-ipq5018-ecm-dsa-conduit-helper.patch
+new file mode 100644
+--- /dev/null
++++ b/qca-nss-ecm/patches/0029-ipq5018-ecm-dsa-conduit-helper.patch
+@@ -0,0 +1,13 @@
++--- a/frontends/nss/ecm_nss_common.h
+++++ b/frontends/nss/ecm_nss_common.h
++@@ -98,8 +98,8 @@
++ 
++ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 12, 0)) && defined(CONFIG_NET_DSA)
++ 	dsa_user = dsa_user_dev_check(dev);
++-	if (dsa_user && dev->dsa_ptr) {
++-		conduit = dsa_port_to_conduit(dev->dsa_ptr);
+++	if (dsa_user) {
+++		conduit = dsa_user_dev_to_conduit(dev);
++ 		conduit_ifnum = -1;
++ 		if (conduit && conduit != dev)
++ 			conduit_ifnum = nss_cmn_get_interface_number_by_dev(conduit);

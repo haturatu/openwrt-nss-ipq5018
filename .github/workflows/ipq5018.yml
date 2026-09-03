@@ -165,6 +165,7 @@ jobs:
       - name: Check diagnostic script syntax
         run: |
           sh -n nss-setup/diagnose-ipq5018.sh
+          sh -n nss-setup/verify-wired-ecm.sh
           sh -n target/linux/qualcommax/ipq50xx/base-files/etc/uci-defaults/90-ipq5018-nss-manual
           sh -n target/linux/qualcommax/ipq50xx/base-files/usr/sbin/nss-ipq5018-manual
           ! grep -Fq 'ip -br' nss-setup/diagnose-ipq5018.sh
@@ -186,6 +187,8 @@ jobs:
           grep -Fq 'ECM-DSA: dev=' feeds/nss_packages/qca-nss-ecm/patches/0027-ipq5018-ecm-dsa-resolution-trace.patch
           grep -Fq 'ECM-NSS: interface-establish' feeds/nss_packages/qca-nss-ecm/patches/0028-ipq5018-ecm-rule-resolution-trace.patch
           grep -Fq 'ECM-NSS: rule-submit' feeds/nss_packages/qca-nss-ecm/patches/0028-ipq5018-ecm-rule-resolution-trace.patch
+          grep -Fq 'dsa_user_dev_to_conduit' target/linux/generic/pending-6.12/712-net-dsa-export-user-netdev-conduit-helper.patch
+          grep -Fq 'dsa_user_dev_to_conduit' feeds/nss_packages/qca-nss-ecm/patches/0029-ipq5018-ecm-dsa-conduit-helper.patch
           grep -Fq 'dsa_user_dev_check' package/kernel/qca-ssdk/patches/130-mp-ignore-dsa-user-port-events.patch
           grep -Fq 'qca-ssdk: notifier' package/kernel/qca-ssdk/patches/131-mp-trace-dsa-port-resolution.patch
           grep -Fq 'qca-ssdk: phy-resolve' package/kernel/qca-ssdk/patches/131-mp-trace-dsa-port-resolution.patch

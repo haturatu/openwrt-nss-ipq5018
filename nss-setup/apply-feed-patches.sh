@@ -38,6 +38,9 @@ patch_is_applied() {
 		0007-ipq5018-ecm-rule-resolution-trace.patch)
 			grep -Fq 'ECM-NSS: rule-submit' "$feed_dir/qca-nss-ecm/patches/0028-ipq5018-ecm-rule-resolution-trace.patch"
 			;;
+		0008-ecm-dsa-conduit-helper.patch)
+			grep -Fq 'dsa_user_dev_to_conduit' "$feed_dir/qca-nss-ecm/patches/0029-ipq5018-ecm-dsa-conduit-helper.patch"
+			;;
 		*)
 			return 1
 			;;
