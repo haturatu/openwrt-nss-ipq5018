@@ -1,0 +1,51 @@
+From 7c607ae24186c3cc4d351ac841dc0961b773fd97 Mon Sep 17 00:00:00 2001
+From: haturatu <haturatu@users.noreply.github.com>
+Date: Thu, 3 Sep 2026 00:00:00 +0900
+Subject: [PATCH] ipq5018: make ECM debugfs writes observable
+
+ECM debugfs nodes vary with kernel and feed configuration. Avoid misleading
+write errors for absent nodes and record a readback mismatch when a writable
+node does not accept the requested value.
+
+Signed-off-by: haturatu <haturatu@users.noreply.github.com>
+---
+ qca-nss-ecm/files/qca-nss-ecm.init | 21 +++++++++++++++++++++
+ 1 file changed, 21 insertions(+), 4 deletions(-)
+
+diff --git a/qca-nss-ecm/files/qca-nss-ecm.init b/qca-nss-ecm/files/qca-nss-ecm.init
+index f0815db..0000000 100644
+--- a/qca-nss-ecm/files/qca-nss-ecm.init
++++ b/qca-nss-ecm/files/qca-nss-ecm.init
+@@ -26,9 +26,26 @@ write_value_if_available() {
+   local file="$1" value="$2"
+ 
++  [ -e "$file" ] || return 0
++  [ -w "$file" ] || {
++    logger -p user.debug -t qca-nss-ecm "Skipping unavailable ECM node $file"
++    return 0
++  }
++
++  if ! printf '%s\n' "$value" > "$file"; then
++    logger -p user.warn -t qca-nss-ecm "Failed to write $file=$value"
++    return 0
++  fi
++
++  case "$file" in
++    /proc/net/nf_conntrack)
++      return 0
++      ;;
++  esac
++
++  [ -r "$file" ] || return 0
++  if [ "$(head -n 1 "$file" 2>/dev/null)" != "$value" ]; then
++    logger -p user.debug -t qca-nss-ecm "ECM node readback mismatch $file expected=$value actual=$(head -n 1 "$file" 2>/dev/null)"
++  fi
+-  [ -w "$file" ] || return 0
+-  if ! printf '%s\n' "$value" > "$file"; then
+-    logger -p user.warn -t qca-nss-ecm "Failed to write $file"
+-  fi
+ }
+ 
+ set_conntrack_events() {
+-- 
+2.40.1
