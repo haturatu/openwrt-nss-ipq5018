@@ -98,7 +98,7 @@ nss-ipq5018-manual gmac1-sdram
 
 `normal`はfirmware既定の配置、`gmac1-sdram`は
 `gmac_tx_desc_1`/`gmac_rx_desc_1`だけをSDRAMへ変更します。各テスト直後に
-`dmesg`, `ip -br link`, WAN疎通、`/proc/interrupts`を保存します。overrideで
+`dmesg`, `ip link`, `ip addr show`, WAN疎通、`/proc/interrupts`を保存します。overrideで
 module parameterが受け付けられない場合は、コマンドが失敗するため、その結果を
 成功扱いにしません。firmware load、NSS core 0 initialized、driver probe完了が
 得られた後に、GMAC1/`dp2`のlinkが維持されるかを判定します。
@@ -131,11 +131,28 @@ uci commit ecm
 
 標準のsoftware/hardware flow offloadは引き続き無効にし、ECM開始後はLAN端末から
 WANへトラフィックを流して、ECM/NSSのcounterを確認します。ECMの有効化だけでは
-NSS forwarding成功とは判定せず、accelerated connection数とNSS statisticsの
-増加を確認します。
+NSS forwarding成功とは判定せず、`ecm_dump.sh`で `ae_interface_identifier` が
+`-1` ではないこと、connectionが `accelerated` へ遷移すること、accelerated
+counterとNSS statisticsが増加することを確認します。
+
+ECMのNSS interface解決は、DSA user portをMX2000固有の番号へ置き換えません。
+`wan`/`lanX` のようなDSA user portで直接NSS interfaceが見つからない場合だけ、
+Linux 6.12のDSA APIでconduit（MX2000では `eth0`）を取得し、NSS-DPが登録した
+conduitのinterface番号を使います。カーネルログの
+`DSA/NSS interface resolve` が `ae_ifnum` を有効値で出すことが、ルール生成前の
+診断条件です。
+
+SSDK notifierでは、QCA8337のDSA user portをIPQ5018 MP PHYとして扱わないように
+しています。QCA8337のリンク管理はLinux DSA/qca8kに任せ、SSDKの未登録PHYが
+port 0へ変換される通知エラーを防ぎます。これはECMのconduit解決とは独立した
+修正です。
 
 失敗時はreserved memory、load address、clock/reset、IRQ、firmware ABI、GMAC1
 descriptor配置の順に切り分けます。
+
+診断スクリプトはBusyBoxの `ip` 実装に合わせて `ip link` と `ip addr show` を
+使います。`nss-setup/diagnose-ipq5018.sh` はNSS module parameter、NSS sysctl、
+ECM debugfsのファイル一覧と主要counter、UBI/NSS/UTCM/GMAC関連clockを収集します。
 
 ### Phase 2: NSS-DP and QCA8337
 

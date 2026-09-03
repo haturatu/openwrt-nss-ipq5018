@@ -35,6 +35,40 @@ read_cells() {
 	fi
 }
 
+read_first_line() {
+	if [ -r "$1" ]; then
+		head -n 1 "$1" 2>/dev/null || printf '%s' '-'
+	else
+		printf '%s' '-'
+	fi
+}
+
+dump_module_parameters() {
+	module_dir="$1"
+	[ -d "$module_dir/parameters" ] || return 0
+
+	for parameter in "$module_dir"/parameters/*; do
+		[ -f "$parameter" ] || continue
+		info "module-parameter=${parameter##*/} value=$(read_first_line "$parameter")"
+	done
+}
+
+dump_ecm_counters() {
+	ecm_dir=/sys/kernel/debug/ecm
+	[ -d "$ecm_dir" ] || return 0
+
+	find "$ecm_dir" -type f -print 2>/dev/null | sort | while IFS= read -r file; do
+		name=${file##*/}
+		case "$name" in
+			*accelerated_count|*tcp_accelerated_count|*udp_accelerated_count|\
+			*connection_count|*pending_count|*fail*|*nack*|*exception*|*backend*)
+				relative=${file#"$ecm_dir"/}
+				info "ecm-counter=$relative value=$(read_first_line "$file")"
+				;;
+		esac
+	done
+}
+
 if [ "$(id -u 2>/dev/null)" != 0 ]; then
 	error 'run as root'
 	exit 1
@@ -90,6 +124,18 @@ for file in /lib/firmware/qca-nss*.bin; do
 done
 [ "$firmware_found" -eq 1 ] || warn 'qca-nss firmware is not installed'
 
+info 'NSS core state:'
+if [ -d /sys/module/qca_nss_drv ]; then
+	info 'module=qca_nss_drv state=loaded'
+	dump_module_parameters /sys/module/qca_nss_drv
+else
+	warn 'module=qca_nss_drv state=not-loaded'
+fi
+for sysctl in /proc/sys/dev/nss/general/redirect; do
+	[ -e "$sysctl" ] || continue
+	info "sysctl=${sysctl#/proc/sys/} value=$(read_first_line "$sysctl")"
+done
+
 info 'relevant kernel log:'
 if command -v dmesg >/dev/null 2>&1; then
 	dmesg | grep -Ei 'nss|ecm|ssdk|gmac|qca8k|firmware' || warn 'no relevant NSS log lines'
@@ -113,15 +159,28 @@ fi
 
 info 'network links:'
 if command -v ip >/dev/null 2>&1; then
-	ip -br link
+	ip link
+	info 'network addresses:'
+	ip addr show
 else
 	warn 'ip command unavailable'
 fi
 
 if [ -d /sys/kernel/debug/ecm ]; then
 	info 'ecm-debugfs=present'
+	info 'ECM debugfs files:'
+	find /sys/kernel/debug/ecm -type f -print 2>/dev/null | sort
+	info 'ECM counters:'
+	dump_ecm_counters
 else
 	warn 'ecm-debugfs=absent'
+fi
+
+info 'relevant NSS clocks:'
+if [ -r /sys/kernel/debug/clk/clk_summary ]; then
+	grep -Ei 'ubi|nss|utcm|gmac' /sys/kernel/debug/clk/clk_summary || warn 'no relevant NSS clock lines'
+else
+	warn '/sys/kernel/debug/clk/clk_summary unavailable'
 fi
 
 info 'diagnostic collection complete'

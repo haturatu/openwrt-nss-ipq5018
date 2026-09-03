@@ -167,17 +167,23 @@ jobs:
           sh -n nss-setup/diagnose-ipq5018.sh
           sh -n target/linux/qualcommax/ipq50xx/base-files/etc/uci-defaults/90-ipq5018-nss-manual
           sh -n target/linux/qualcommax/ipq50xx/base-files/usr/sbin/nss-ipq5018-manual
+          ! grep -Fq 'ip -br' nss-setup/diagnose-ipq5018.sh
+          grep -Fq 'ip addr show' nss-setup/diagnose-ipq5018.sh
 
       - name: Verify MX2000 staged bring-up source
         run: |
           grep -Fx '#include "ipq5018-nss.dtsi"' target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-mx2000.dts
           ! grep -Fx '#include "ipq5018-nss-qcn6122.dtsi"' target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-mx2000.dts
-          grep -Fq 'clk_ignore_unused pd_ignore_unused' target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-mx2000.dts
+          grep -Fq 'coherent_pool=2M clk_ignore_unused' target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-mx2000.dts
+          ! grep -Fq 'pd_ignore_unused' target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-mx2000.dts
           grep -Fq 'NSS_DRV_MANUAL_BRINGUP' feeds/nss_packages/qca-nss-drv/Makefile
           grep -Fq "option enable '0'" feeds/nss_packages/qca-nss-ecm/files/qca-nss-ecm.uci
           grep -Fq "acceleration_engine='nss'" target/linux/qualcommax/ipq50xx/base-files/etc/uci-defaults/90-ipq5018-nss-manual
           grep -Fq 'ecm-on' target/linux/qualcommax/ipq50xx/base-files/usr/sbin/nss-ipq5018-manual
           grep -Fq 'NSS driver is not loaded; refusing to start ECM' feeds/nss_packages/qca-nss-ecm/files/qca-nss-ecm.init
+          grep -Fq 'ECM node readback mismatch' feeds/nss_packages/qca-nss-ecm/files/qca-nss-ecm.init
+          grep -Fq 'dsa_port_to_conduit' feeds/nss_packages/qca-nss-ecm/patches/0026-ipq5018-ecm-dsa-conduit-interface-resolution.patch
+          grep -Fq 'dsa_user_dev_check' package/kernel/qca-ssdk/patches/130-mp-ignore-dsa-user-port-events.patch
 
       - name: Build kernel and NSS packages
         run: |
