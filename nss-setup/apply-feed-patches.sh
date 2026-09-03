@@ -35,6 +35,9 @@ patch_is_applied() {
 		0006-ipq5018-ecm-dsa-resolution-trace.patch)
 			grep -Fq 'ECM-DSA: dev=' "$feed_dir/qca-nss-ecm/patches/0027-ipq5018-ecm-dsa-resolution-trace.patch"
 			;;
+		0007-ipq5018-ecm-rule-resolution-trace.patch)
+			grep -Fq 'ECM-NSS: rule-submit' "$feed_dir/qca-nss-ecm/patches/0028-ipq5018-ecm-rule-resolution-trace.patch"
+			;;
 		*)
 			return 1
 			;;

@@ -1,0 +1,264 @@
+diff --git a/qca-nss-ecm/patches/0028-ipq5018-ecm-rule-resolution-trace.patch b/qca-nss-ecm/patches/0028-ipq5018-ecm-rule-resolution-trace.patch
+new file mode 100644
+--- /dev/null
++++ b/qca-nss-ecm/patches/0028-ipq5018-ecm-rule-resolution-trace.patch
+@@ -0,0 +1,258 @@
++diff --git a/ecm_interface.c b/ecm_interface.c
++index 25a815d..17d478e 100644
++--- a/ecm_interface.c
+++++ b/ecm_interface.c
++@@ -3105,6 +3105,8 @@ struct ecm_db_iface_instance *ecm_interface_establish_and_ref(struct ecm_front_e
++ 	 * Does the accel engine recognise this interface?
++ 	 */
++ 	ae_interface_num = feci->ae_interface_number_by_dev_get(dev);
+++	pr_info_ratelimited("ECM-NSS: interface-establish dev=%s ifindex=%d type=%d ae_ifnum=%d mtu=%d\n",
+++		dev_name, dev_interface_num, dev_type, ae_interface_num, dev_mtu);
++ 
++ 	DEBUG_TRACE("%px: Establish interface instance for device: %px is type: %d, name: %s, ifindex: %d, ae_if: %d, mtu: %d\n",
++ 			feci, dev, dev_type, dev_name, dev_interface_num, ae_interface_num, dev_mtu);
++diff --git a/frontends/cmn/ecm_ported_ipv4.c b/frontends/cmn/ecm_ported_ipv4.c
++index 40abc32..5c6755e 100644
++--- a/frontends/cmn/ecm_ported_ipv4.c
+++++ b/frontends/cmn/ecm_ported_ipv4.c
++@@ -18,6 +18,7 @@
++  */
++ 
++ #include <linux/version.h>
+++#include <linux/kernel.h>
++ #include <linux/types.h>
++ #include <linux/ip.h>
++ #include <linux/tcp.h>
++@@ -1297,8 +1298,13 @@ done:
++ 	if (prevalent_pr.accel_mode == ECM_CLASSIFIER_ACCELERATION_MODE_ACCEL) {
++ 		DEBUG_TRACE("%px: accel\n", ci);
++ 		feci = ecm_db_connection_front_end_get_and_ref(ci);
+++		pr_info_ratelimited("ECM-NSS: accelerate-request proto=4 classifier_mode=%d can_accel=%d routed=%d\n",
+++			prevalent_pr.accel_mode, feci->can_accel, ecm_db_connection_is_routed_get(ci));
++ 		feci->accelerate(feci, &prevalent_pr, is_l2_encap, ct, skb);
++ 		ecm_front_end_connection_deref(feci);
+++	} else {
+++		pr_info_ratelimited("ECM-NSS: accelerate-skipped proto=4 classifier_mode=%d\n",
+++			prevalent_pr.accel_mode);
++ 	}
++ 	ecm_db_connection_deref(ci);
++ 
++diff --git a/frontends/cmn/ecm_ported_ipv6.c b/frontends/cmn/ecm_ported_ipv6.c
++index 2e026b1..f63613a 100644
++--- a/frontends/cmn/ecm_ported_ipv6.c
+++++ b/frontends/cmn/ecm_ported_ipv6.c
++@@ -18,6 +18,7 @@
++  */
++ 
++ #include <linux/version.h>
+++#include <linux/kernel.h>
++ #include <linux/types.h>
++ #include <linux/ip.h>
++ #include <linux/tcp.h>
++@@ -1302,8 +1303,13 @@ done:
++ 	if (prevalent_pr.accel_mode == ECM_CLASSIFIER_ACCELERATION_MODE_ACCEL) {
++ 		DEBUG_TRACE("%px: accel\n", ci);
++ 		feci = ecm_db_connection_front_end_get_and_ref(ci);
+++		pr_info_ratelimited("ECM-NSS: accelerate-request proto=6 classifier_mode=%d can_accel=%d routed=%d\n",
+++			prevalent_pr.accel_mode, feci->can_accel, ecm_db_connection_is_routed_get(ci));
++ 		feci->accelerate(feci, &prevalent_pr, is_l2_encap, ct, skb);
++ 		ecm_front_end_connection_deref(feci);
+++	} else {
+++		pr_info_ratelimited("ECM-NSS: accelerate-skipped proto=6 classifier_mode=%d\n",
+++			prevalent_pr.accel_mode);
++ 	}
++ 	ecm_db_connection_deref(ci);
++ 
++diff --git a/frontends/nss/ecm_nss_ported_ipv4.c b/frontends/nss/ecm_nss_ported_ipv4.c
++index 36cc6a0..72aa0d0 100644
++--- a/frontends/nss/ecm_nss_ported_ipv4.c
+++++ b/frontends/nss/ecm_nss_ported_ipv4.c
++@@ -18,6 +18,7 @@
++  */
++ 
++ #include <linux/version.h>
+++#include <linux/kernel.h>
++ #include <linux/types.h>
++ #include <linux/ip.h>
++ #include <linux/tcp.h>
++@@ -359,12 +360,14 @@ static void ecm_nss_ported_ipv4_connection_accelerate(struct ecm_front_end_conne
++ 	 * Test if acceleration is permitted
++ 	 */
++ 	if (!ecm_nss_ipv4_accel_pending_set(feci)) {
+++		pr_info_ratelimited("ECM-NSS: accelerate-denied proto=4 reason=pending-state\n");
++ 		DEBUG_TRACE("%px: Acceleration not permitted: %px\n", feci, feci->ci);
++ 		return;
++ 	}
++ 
++ 	nim = (struct nss_ipv4_msg *)kzalloc(sizeof(struct nss_ipv4_msg), GFP_ATOMIC | __GFP_NOWARN);
++ 	if (!nim) {
+++		pr_info_ratelimited("ECM-NSS: accelerate-denied proto=4 reason=message-allocation\n");
++ 		DEBUG_WARN("%px: no memory for nss ipv4 message structure instance: %px\n", feci, feci->ci);
++ 		ecm_nss_ipv4_accel_pending_clear(feci, ECM_FRONT_END_ACCELERATION_MODE_DECEL);
++ 		return;
++@@ -398,12 +401,14 @@ static void ecm_nss_ported_ipv4_connection_accelerate(struct ecm_front_end_conne
++ 	 */
++ 	from_ifaces_first = ecm_db_connection_interfaces_get_and_ref(feci->ci, from_ifaces, ECM_DB_OBJ_DIR_FROM);
++ 	if (from_ifaces_first == ECM_DB_IFACE_HEIRARCHY_MAX) {
+++		pr_info_ratelimited("ECM-NSS: rule-rejected proto=4 reason=no-from-interfaces\n");
++ 		DEBUG_WARN("%px: Accel attempt failed - no interfaces in from_interfaces list!\n", feci);
++ 		goto ported_accel_bad_rule;
++ 	}
++ 
++ 	to_ifaces_first = ecm_db_connection_interfaces_get_and_ref(feci->ci, to_ifaces, ECM_DB_OBJ_DIR_TO);
++ 	if (to_ifaces_first == ECM_DB_IFACE_HEIRARCHY_MAX) {
+++		pr_info_ratelimited("ECM-NSS: rule-rejected proto=4 reason=no-to-interfaces\n");
++ 		DEBUG_WARN("%px: Accel attempt failed - no interfaces in to_interfaces list!\n", feci);
++ 		ecm_db_connection_interfaces_deref(from_ifaces, from_ifaces_first);
++ 		goto ported_accel_bad_rule;
++@@ -416,7 +421,11 @@ static void ecm_nss_ported_ipv4_connection_accelerate(struct ecm_front_end_conne
++ 	to_nss_iface = to_ifaces[to_ifaces_first];
++ 	from_nss_iface_id = ecm_db_iface_ae_interface_identifier_get(from_nss_iface);
++ 	to_nss_iface_id = ecm_db_iface_ae_interface_identifier_get(to_nss_iface);
+++	pr_info_ratelimited("ECM-NSS: rule-interface-check proto=4 from_ifnum=%d to_ifnum=%d\n",
+++		from_nss_iface_id, to_nss_iface_id);
++ 	if ((from_nss_iface_id < 0) || (to_nss_iface_id < 0)) {
+++		pr_info_ratelimited("ECM-NSS: rule-rejected proto=4 reason=invalid-interface from_ifnum=%d to_ifnum=%d\n",
+++			from_nss_iface_id, to_nss_iface_id);
++ 		DEBUG_TRACE("%px: from_nss_iface_id: %d, to_nss_iface_id: %d\n", feci, from_nss_iface_id, to_nss_iface_id);
++ 		ecm_db_connection_interfaces_deref(from_ifaces, from_ifaces_first);
++ 		ecm_db_connection_interfaces_deref(to_ifaces, to_ifaces_first);
++@@ -756,6 +765,7 @@ static void ecm_nss_ported_ipv4_connection_accelerate(struct ecm_front_end_conne
++ 	}
++ 
++ 	if (rule_invalid) {
+++		pr_info_ratelimited("ECM-NSS: rule-rejected proto=4 reason=from-hierarchy\n");
++ 		DEBUG_WARN("%px: from/src Rule invalid\n", feci);
++ 		ecm_db_connection_interfaces_deref(from_ifaces, from_ifaces_first);
++ 		ecm_db_connection_interfaces_deref(to_ifaces, to_ifaces_first);
++@@ -989,6 +999,7 @@ static void ecm_nss_ported_ipv4_connection_accelerate(struct ecm_front_end_conne
++ 	}
++ 
++ 	if (rule_invalid) {
+++		pr_info_ratelimited("ECM-NSS: rule-rejected proto=4 reason=to-hierarchy\n");
++ 		DEBUG_WARN("%px: to/dest Rule invalid\n", feci);
++ 		ecm_db_connection_interfaces_deref(from_ifaces, from_ifaces_first);
++ 		ecm_db_connection_interfaces_deref(to_ifaces, to_ifaces_first);
++@@ -1382,6 +1393,7 @@ static void ecm_nss_ported_ipv4_connection_accelerate(struct ecm_front_end_conne
++ 	 * after this check passes, the connection will be decelerated and refreshed very quickly.
++ 	 */
++ 	if (regen_occurrances != ecm_db_connection_regeneration_occurrances_get(feci->ci)) {
+++		pr_info_ratelimited("ECM-NSS: rule-rejected proto=4 reason=regeneration\n");
++ 		DEBUG_INFO("%px: connection:%px regen occurred - aborting accel rule.\n", feci, feci->ci);
++ 		ecm_nss_ipv4_accel_pending_clear(feci, ECM_FRONT_END_ACCELERATION_MODE_DECEL);
++ 		kfree(nim);
++@@ -1406,7 +1418,11 @@ static void ecm_nss_ported_ipv4_connection_accelerate(struct ecm_front_end_conne
++ 	/*
++ 	 * Call the rule create function
++ 	 */
+++	pr_info_ratelimited("ECM-NSS: rule-submit proto=4 flow_ifnum=%d return_ifnum=%d flow_nexthop=%d return_nexthop=%d\n",
+++		nircm->conn_rule.flow_interface_num, nircm->conn_rule.return_interface_num,
+++		nircm->nexthop_rule.flow_nexthop, nircm->nexthop_rule.return_nexthop);
++ 	nss_tx_status = nss_ipv4_tx(ecm_nss_ipv4_nss_ipv4_mgr, nim);
+++	pr_info_ratelimited("ECM-NSS: rule-submit-result proto=4 status=%d\n", nss_tx_status);
++ 	if (nss_tx_status == NSS_TX_SUCCESS) {
++ 		/*
++ 		 * Reset the driver_fail count - transmission was okay here.
++@@ -1419,6 +1435,7 @@ static void ecm_nss_ported_ipv4_connection_accelerate(struct ecm_front_end_conne
++ 	}
++ 
++ 	kfree(nim);
+++	pr_info_ratelimited("ECM-NSS: rule-rejected proto=4 reason=bad-rule\n");
++ 
++ 	/*
++ 	 * Release that ref!
++diff --git a/frontends/nss/ecm_nss_ported_ipv6.c b/frontends/nss/ecm_nss_ported_ipv6.c
++index cd1f05f..425fb3d 100644
++--- a/frontends/nss/ecm_nss_ported_ipv6.c
+++++ b/frontends/nss/ecm_nss_ported_ipv6.c
++@@ -18,6 +18,7 @@
++  */
++ 
++ #include <linux/version.h>
+++#include <linux/kernel.h>
++ #include <linux/types.h>
++ #include <linux/ip.h>
++ #include <linux/tcp.h>
++@@ -364,12 +365,14 @@ static void ecm_nss_ported_ipv6_connection_accelerate(struct ecm_front_end_conne
++ 	 * Test if acceleration is permitted
++ 	 */
++ 	if (!ecm_nss_ipv6_accel_pending_set(feci)) {
+++		pr_info_ratelimited("ECM-NSS: accelerate-denied proto=6 reason=pending-state\n");
++ 		DEBUG_TRACE("%px: Acceleration not permitted: %px\n", feci, feci->ci);
++ 		return;
++ 	}
++ 
++ 	nim = (struct nss_ipv6_msg *)kzalloc(sizeof(struct nss_ipv6_msg), GFP_ATOMIC | __GFP_NOWARN);
++ 	if (!nim) {
+++		pr_info_ratelimited("ECM-NSS: accelerate-denied proto=6 reason=message-allocation\n");
++ 		DEBUG_WARN("%px: no memory for nss ipv6 message structure instance: %px\n", feci, feci->ci);
++ 		ecm_nss_ipv6_accel_pending_clear(feci, ECM_FRONT_END_ACCELERATION_MODE_DECEL);
++ 		return;
++@@ -403,12 +406,14 @@ static void ecm_nss_ported_ipv6_connection_accelerate(struct ecm_front_end_conne
++ 	 */
++ 	from_ifaces_first = ecm_db_connection_interfaces_get_and_ref(feci->ci, from_ifaces, ECM_DB_OBJ_DIR_FROM);
++ 	if (from_ifaces_first == ECM_DB_IFACE_HEIRARCHY_MAX) {
+++		pr_info_ratelimited("ECM-NSS: rule-rejected proto=6 reason=no-from-interfaces\n");
++ 		DEBUG_WARN("%px: Accel attempt failed - no interfaces in from_interfaces list!\n", feci);
++ 		goto ported_accel_bad_rule;
++ 	}
++ 
++ 	to_ifaces_first = ecm_db_connection_interfaces_get_and_ref(feci->ci, to_ifaces, ECM_DB_OBJ_DIR_TO);
++ 	if (to_ifaces_first == ECM_DB_IFACE_HEIRARCHY_MAX) {
+++		pr_info_ratelimited("ECM-NSS: rule-rejected proto=6 reason=no-to-interfaces\n");
++ 		DEBUG_WARN("%px: Accel attempt failed - no interfaces in to_interfaces list!\n", feci);
++ 		ecm_db_connection_interfaces_deref(from_ifaces, from_ifaces_first);
++ 		goto ported_accel_bad_rule;
++@@ -421,6 +426,8 @@ static void ecm_nss_ported_ipv6_connection_accelerate(struct ecm_front_end_conne
++ 	to_nss_iface = to_ifaces[to_ifaces_first];
++ 	from_nss_iface_id = ecm_db_iface_ae_interface_identifier_get(from_nss_iface);
++ 	to_nss_iface_id = ecm_db_iface_ae_interface_identifier_get(to_nss_iface);
+++	pr_info_ratelimited("ECM-NSS: rule-interface-check proto=6 from_ifnum=%d to_ifnum=%d\n",
+++		from_nss_iface_id, to_nss_iface_id);
++ 	if ((from_nss_iface_id < 0) || (to_nss_iface_id < 0)) {
++ 		DEBUG_TRACE("%px: from_nss_iface_id: %d, to_nss_iface_id: %d\n", feci, from_nss_iface_id, to_nss_iface_id);
++ 		ecm_db_connection_interfaces_deref(from_ifaces, from_ifaces_first);
++@@ -719,6 +726,7 @@ static void ecm_nss_ported_ipv6_connection_accelerate(struct ecm_front_end_conne
++ 	}
++ 
++ 	if (rule_invalid) {
+++		pr_info_ratelimited("ECM-NSS: rule-rejected proto=6 reason=from-hierarchy\n");
++ 		DEBUG_WARN("%px: from/src Rule invalid\n", feci);
++ 		ecm_db_connection_interfaces_deref(from_ifaces, from_ifaces_first);
++ 		ecm_db_connection_interfaces_deref(to_ifaces, to_ifaces_first);
++@@ -951,6 +959,7 @@ static void ecm_nss_ported_ipv6_connection_accelerate(struct ecm_front_end_conne
++ 	}
++ 
++ 	if (rule_invalid) {
+++		pr_info_ratelimited("ECM-NSS: rule-rejected proto=6 reason=to-hierarchy\n");
++ 		DEBUG_WARN("%px: to/dest Rule invalid\n", feci);
++ 		ecm_db_connection_interfaces_deref(from_ifaces, from_ifaces_first);
++ 		ecm_db_connection_interfaces_deref(to_ifaces, to_ifaces_first);
++@@ -1280,6 +1289,7 @@ static void ecm_nss_ported_ipv6_connection_accelerate(struct ecm_front_end_conne
++ 	 * after this check passes, the connection will be decelerated and refreshed very quickly.
++ 	 */
++ 	if (regen_occurrances != ecm_db_connection_regeneration_occurrances_get(feci->ci)) {
+++		pr_info_ratelimited("ECM-NSS: rule-rejected proto=6 reason=regeneration\n");
++ 		DEBUG_INFO("%px: connection:%px regen occurred - aborting accel rule.\n", feci, feci->ci);
++ 		ecm_nss_ipv6_accel_pending_clear(feci, ECM_FRONT_END_ACCELERATION_MODE_DECEL);
++ 		kfree(nim);
++@@ -1304,7 +1314,11 @@ static void ecm_nss_ported_ipv6_connection_accelerate(struct ecm_front_end_conne
++ 	/*
++ 	 * Call the rule create function
++ 	 */
+++	pr_info_ratelimited("ECM-NSS: rule-submit proto=6 flow_ifnum=%d return_ifnum=%d flow_nexthop=%d return_nexthop=%d\n",
+++		nircm->conn_rule.flow_interface_num, nircm->conn_rule.return_interface_num,
+++		nircm->nexthop_rule.flow_nexthop, nircm->nexthop_rule.return_nexthop);
++ 	nss_tx_status = nss_ipv6_tx(ecm_nss_ipv6_nss_ipv6_mgr, nim);
+++	pr_info_ratelimited("ECM-NSS: rule-submit-result proto=6 status=%d\n", nss_tx_status);
++ 	if (nss_tx_status == NSS_TX_SUCCESS) {
++ 		/*
++ 		 * Reset the driver_fail count - transmission was okay here.
++@@ -1317,6 +1331,7 @@ static void ecm_nss_ported_ipv6_connection_accelerate(struct ecm_front_end_conne
++ 	}
++ 
++ 	kfree(nim);
+++	pr_info_ratelimited("ECM-NSS: rule-rejected proto=6 reason=bad-rule\n");
++ 
++ 	/*
++ 	 * Release that ref!
+
