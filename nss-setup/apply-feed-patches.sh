@@ -32,6 +32,9 @@ patch_is_applied() {
 		0005-ipq5018-ecm-debugfs-write-readback.patch)
 			grep -Fq 'ECM node readback mismatch' "$feed_dir/qca-nss-ecm/files/qca-nss-ecm.init"
 			;;
+		0006-ipq5018-ecm-dsa-resolution-trace.patch)
+			grep -Fq 'ECM-DSA: dev=' "$feed_dir/qca-nss-ecm/patches/0027-ipq5018-ecm-dsa-resolution-trace.patch"
+			;;
 		*)
 			return 1
 			;;

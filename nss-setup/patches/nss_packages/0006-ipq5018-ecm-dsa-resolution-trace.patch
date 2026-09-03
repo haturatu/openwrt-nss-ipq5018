@@ -1,0 +1,64 @@
+diff --git a/qca-nss-ecm/patches/0027-ipq5018-ecm-dsa-resolution-trace.patch b/qca-nss-ecm/patches/0027-ipq5018-ecm-dsa-resolution-trace.patch
+new file mode 100644
+--- /dev/null
++++ b/qca-nss-ecm/patches/0027-ipq5018-ecm-dsa-resolution-trace.patch
+@@ -0,0 +1,59 @@
++--- a/frontends/nss/ecm_nss_common.h
+++++ b/frontends/nss/ecm_nss_common.h
++@@ -31,6 +31,7 @@
++ #endif
++ 
++ #include <linux/version.h>
+++#include <linux/kernel.h>
++ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 12, 0)) && defined(CONFIG_NET_DSA)
++ #include <net/dsa.h>
++ #endif
++@@ -69,10 +70,12 @@
++  */
++ static inline int32_t ecm_nss_common_get_interface_number_by_dev(struct net_device *dev)
++ {
+++	int32_t raw_ifnum;
++ 	int32_t ifnum;
++ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 12, 0)) && defined(CONFIG_NET_DSA)
++-	struct net_device *conduit;
++-	int32_t conduit_ifnum;
+++	struct net_device *conduit = NULL;
+++	int32_t conduit_ifnum = -1;
+++	bool dsa_user = false;
++ #endif
++ 
++ 	/*
++@@ -88,23 +91,26 @@
++ 	}
++ #endif
++ 
++-	ifnum = nss_cmn_get_interface_number_by_dev(dev);
+++	raw_ifnum = nss_cmn_get_interface_number_by_dev(dev);
+++	ifnum = raw_ifnum;
++ 
++ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 12, 0)) && defined(CONFIG_NET_DSA)
++-	if (dsa_user_dev_check(dev) && dev->dsa_ptr) {
+++	dsa_user = dsa_user_dev_check(dev);
+++	if (dsa_user && dev->dsa_ptr) {
++ 		conduit = dsa_port_to_conduit(dev->dsa_ptr);
++ 		conduit_ifnum = -1;
++ 		if (conduit && conduit != dev)
++ 			conduit_ifnum = nss_cmn_get_interface_number_by_dev(conduit);
++ 
++-		DEBUG_TRACE("DSA/NSS interface resolve: dev=%s ifindex=%d initial_ae_ifnum=%d conduit=%s conduit_ifindex=%d ae_ifnum=%d\n",
++-			dev->name, dev->ifindex, ifnum,
++-			conduit ? conduit->name : "-",
++-			conduit ? conduit->ifindex : -1, conduit_ifnum);
++-
++ 		if (ifnum < 0)
++ 			ifnum = conduit_ifnum;
++ 	}
+++
+++	pr_info_ratelimited("ECM-DSA: dev=%s ifindex=%d raw_ifnum=%d dsa_user=%d conduit=%s conduit_ifindex=%d conduit_ifnum=%d final_ifnum=%d\n",
+++		dev->name, dev->ifindex,
+++		raw_ifnum,
+++		dsa_user, conduit ? conduit->name : "-",
+++		conduit ? conduit->ifindex : -1, conduit_ifnum, ifnum);
++ #endif
++ 
++ 	return ifnum;
