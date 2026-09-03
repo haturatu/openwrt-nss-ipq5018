@@ -10,7 +10,7 @@
 	compatible = "linksys,mx2000", "qcom,ipq5018";
 
 	chosen {
-		bootargs-append = " root=/dev/ubiblock0_0 coherent_pool=2M clk_ignore_unused pd_ignore_unused";
+		bootargs-append = " root=/dev/ubiblock0_0 coherent_pool=2M clk_ignore_unused";
 		stdout-path = "serial0:115200n8";
 	};
 };
