@@ -219,7 +219,7 @@ Signed-off-by: Ramya Gnanasekar <rgnanase@codeaurora.org>
  
 --- a/drivers/net/wireless/ath/ath11k/core.c
 +++ b/drivers/net/wireless/ath/ath11k/core.c
-@@ -45,6 +45,8 @@ bool ath11k_ftm_mode;
+@@ -44,6 +44,8 @@ bool ath11k_ftm_mode;
  module_param_named(ftm_mode, ath11k_ftm_mode, bool, 0444);
  MODULE_PARM_DESC(ftm_mode, "Boots up in factory test mode");
  

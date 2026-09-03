@@ -2760,15 +2760,14 @@ Signed-off-by: Sriram R <srirrama@codeaurora.org>
 +#endif
 --- a/drivers/net/wireless/ath/ath11k/hif.h
 +++ b/drivers/net/wireless/ath/ath11k/hif.h
-@@ -33,6 +33,7 @@ struct ath11k_hif_ops {
+@@ -33,3 +33,4 @@ struct ath11k_hif_ops {
  	void (*get_ce_msi_idx)(struct ath11k_base *ab, u32 ce_id, u32 *msi_idx);
  	void (*coredump_download)(struct ath11k_base *ab);
- 	void (*config_static_window)(struct ath11k_base *ab);
 +	u32 (*get_window_offset)(struct ath11k_base *ab, u32 offset);
  };
  
  static inline void ath11k_hif_ce_irq_enable(struct ath11k_base *ab)
-@@ -145,6 +146,14 @@ static inline void ath11k_get_msi_addres
+@@ -144,5 +145,13 @@ static inline void ath11k_get_msi_addres
  	ab->hif.ops->get_msi_address(ab, msi_addr_lo, msi_addr_hi);
  }
  
