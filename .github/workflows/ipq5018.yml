@@ -175,6 +175,9 @@ jobs:
           grep -Fq 'clk_ignore_unused pd_ignore_unused' target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-mx2000.dts
           grep -Fq 'NSS_DRV_MANUAL_BRINGUP' feeds/nss_packages/qca-nss-drv/Makefile
           grep -Fq "option enable '0'" feeds/nss_packages/qca-nss-ecm/files/qca-nss-ecm.uci
+          grep -Fq "acceleration_engine='nss'" target/linux/qualcommax/ipq50xx/base-files/etc/uci-defaults/90-ipq5018-nss-manual
+          grep -Fq 'ecm-on' target/linux/qualcommax/ipq50xx/base-files/usr/sbin/nss-ipq5018-manual
+          grep -Fq 'NSS driver is not loaded; refusing to start ECM' feeds/nss_packages/qca-nss-ecm/files/qca-nss-ecm.init
 
       - name: Build kernel and NSS packages
         run: |
