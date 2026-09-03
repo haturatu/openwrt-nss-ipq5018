@@ -192,6 +192,8 @@ jobs:
           grep -Fq 'dsa_user_dev_check' package/kernel/qca-ssdk/patches/130-mp-ignore-dsa-user-port-events.patch
           grep -Fq 'qca-ssdk: notifier' package/kernel/qca-ssdk/patches/131-mp-trace-dsa-port-resolution.patch
           grep -Fq 'qca-ssdk: phy-resolve' package/kernel/qca-ssdk/patches/131-mp-trace-dsa-port-resolution.patch
+          grep -Fq 'qca_ssdk_phydev_to_port_valid' package/kernel/qca-ssdk/patches/132-mp-ignore-unmapped-phy-notifications.patch
+          grep -Fq 'skip unmapped MP PHY notification' package/kernel/qca-ssdk/patches/132-mp-ignore-unmapped-phy-notifications.patch
 
       - name: Build kernel and NSS packages
         run: |

@@ -1,0 +1,58 @@
+--- a/include/hsl/phy/hsl_phy.h
++++ b/include/hsl/phy/hsl_phy.h
+@@ -698,6 +698,8 @@
+ /*qca808x_end*/
+ a_uint32_t
+ qca_ssdk_phydev_to_port(a_uint32_t dev_id, struct phy_device *phydev);
++a_bool_t
++qca_ssdk_phydev_to_port_valid(a_uint32_t dev_id, struct phy_device *phydev);
+ void
+ hsl_port_phy_c45_capability_set(a_uint32_t dev_id, a_uint32_t port_id,
+ 			a_bool_t enable);
+--- a/src/hsl/phy/hsl_phy.c
++++ b/src/hsl/phy/hsl_phy.c
+@@ -526,5 +526,29 @@
+ }
+ 
+ a_bool_t
++qca_ssdk_phydev_to_port_valid(a_uint32_t dev_id, struct phy_device *phydev)
++{
++	a_uint32_t miibus_id = 0, phy_addr_e = 0, port_id;
++
++	if (!phydev)
++		return A_FALSE;
++
++	miibus_id = ssdk_miibus_index_get(dev_id, phydev->mdio.bus);
++	phy_addr_e = TO_PHY_ADDR_E(phydev->mdio.addr, miibus_id);
++	port_id = qca_ssdk_phy_addr_to_port(dev_id, phy_addr_e);
++
++	if (qca_ssdk_port_to_phy_addr(dev_id, port_id) == phy_addr_e)
++		return A_TRUE;
++
++#if defined(IN_PHY_I2C_MODE)
++	if (qca_ssdk_port_to_phy_mdio_fake_address(dev_id, port_id) ==
++		TO_PHY_ADDR(phy_addr_e))
++		return A_TRUE;
++#endif
++
++	return A_FALSE;
++}
++
++a_bool_t
+ qca_ssdk_gpio_is_invalid(a_uint32_t dev_id, a_uint32_t gpio_num)
+ {
+--- a/src/init/ssdk_init.c
++++ b/src/init/ssdk_init.c
+@@ -2324,6 +2324,12 @@
+ 					return NOTIFY_DONE;
+ 				}
+ 				if (dev->phydev != NULL) {
++					if (!qca_ssdk_phydev_to_port_valid(priv->device_id,
++						dev->phydev)) {
++						pr_info_ratelimited("qca-ssdk: skip unmapped MP PHY notification dev=%s ifindex=%d phy_addr=%d\n",
++							dev->name, dev->ifindex, dev->phydev->mdio.addr);
++						break;
++					}
+ 					port_id = qca_ssdk_phydev_to_port(priv->device_id,
+ 						dev->phydev);
+ 					pr_info_ratelimited("qca-ssdk: port-resolve dev=%s ifindex=%d phy_addr=%d port=%u\n",
