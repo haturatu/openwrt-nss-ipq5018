@@ -191,6 +191,9 @@ jobs:
         run: |
           sh -n nss-setup/diagnose-ipq5018.sh
           sh -n nss-setup/verify-wired-ecm.sh
+          sh -n nss-setup/enable-ipq5018-wifi-nss.sh
+          sh -n nss-setup/verify-ipq5018-nss-boot.sh
+          sh -n package/kernel/mac80211/files/qca-nss-pbuf.init
           sh -n target/linux/qualcommax/ipq50xx/base-files/etc/uci-defaults/90-ipq5018-nss-manual
           sh -n target/linux/qualcommax/ipq50xx/base-files/usr/sbin/nss-ipq5018-manual
           ! grep -Fq 'ip -br' nss-setup/diagnose-ipq5018.sh
@@ -256,11 +259,11 @@ jobs:
           test -n "$manifest"
           grep -Eq '^kmod-qca-nss-dp([[:space:]]|$)' "$manifest"
           grep -Eq '^kmod-qca-nss-drv([[:space:]]|$)' "$manifest"
-            grep -Eq '^kmod-qca-nss-ecm([[:space:]]|$)' "$manifest"
-            grep -Eq '^nss-firmware-ipq50xx([[:space:]]|$)' "$manifest"
-            if [ "$IPQ5018_WIFI_NSS" = true ]; then
-              grep -Eq '^kmod-ath11k([_-]|[[:space:]])' "$manifest"
-            fi
+          grep -Eq '^kmod-qca-nss-ecm([[:space:]]|$)' "$manifest"
+          grep -Eq '^nss-firmware-ipq50xx([[:space:]]|$)' "$manifest"
+          if [ "$IPQ5018_WIFI_NSS" = true ]; then
+            grep -Eq '^kmod-ath11k([_-]|[[:space:]])' "$manifest"
+          fi
 
       - name: Collect build metadata
         if: always()

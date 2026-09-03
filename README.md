@@ -57,14 +57,16 @@ This repository contains a fork of OpenWrt that integrates Qualcomm's NSS (Netwo
 
 ### IPQ5018 status
 
-IPQ5018 support is being brought up on real hardware. The Linksys MX2000 device
-profile, QCA8337 SGMII dataplane, NSS reserved memory, NSS core DT, and package
-integration are present in this fork. The initial configuration keeps ath11k Wi-Fi
-offload disabled so NSS core, NSS-DP, and ECM can be validated independently.
-See [`docs/ipq5018-nss.md`](docs/ipq5018-nss.md) and
-[`nss-setup/config-ipq5018.seed`](nss-setup/config-ipq5018.seed) for the measured
-hardware data and bring-up procedure. Do not treat IPQ5018 NSS as production-ready
-until the on-device acceptance tests in that document pass.
+IPQ5018 support is being validated on real hardware. The Linksys MX2000 device
+profile, QCA8337 SGMII dataplane, NSS reserved memory, NSS core DT, package
+integration, and wired NSS/ECM bring-up are present in this fork. The production
+seed autoloads the NSS driver while keeping ECM disabled until explicitly enabled.
+ath11k Wi-Fi NSS is an opt-in experiment; use
+[`nss-setup/enable-ipq5018-wifi-nss.sh`](nss-setup/enable-ipq5018-wifi-nss.sh) or
+the workflow_dispatch input to build it. See
+[`docs/ipq5018-nss.md`](docs/ipq5018-nss.md) for the acceptance and recovery
+procedures. Do not treat Wi-Fi NSS as production-ready until its on-device tests
+pass.
 
 ---
 #### What's NSS?

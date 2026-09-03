@@ -1,4 +1,4 @@
-# IPQ5018 NSS bring-up design
+# IPQ5018 NSS production and Wi-Fi experiment design
 
 このリポジトリは、`qosmio/openwrt-ipq` の `25.12-nss` を基礎に、公式
 OpenWrt `openwrt-25.12` の先端へ追従したIPQ5018 NSS bring-up用の作業ツリーです。
@@ -23,10 +23,10 @@ NSS関連コードとfirmwareはOpenWrt upstreamには含まれないため、qo
 | 外部switch | QCA8337、CPU port 6、SGMII固定1Gbps |
 | NSS-DP | `dp2`、register `0x39d00000`、GIC SPI 141、Linux IRQ 43 |
 
-MX2000の実験用イメージでは、`dp2`/QCA8337経路を保ったままNSS core用の
-`nss-common`/`nss0`とfirmware load用の`nss_region`を追加します。ただし
-`qca-nss-drv`はkmodloaderから外し、ECMも自動起動しません。これにより、
-NSS firmware起動後のGMAC1引き継ぎがWAN/LANを壊すかを手動で分離できます。
+MX2000イメージでは、`dp2`/QCA8337経路を保ったままNSS core用の
+`nss-common`/`nss0`とfirmware load用の`nss_region`を追加します。
+`qca-nss-drv`は実機で確認済みの通常autoloadへ戻し、ECMは引き続き自動起動
+しません。`nss-ipq5018-manual`はdescriptor配置のA/B試験と復旧用に残します。
 
 現在の設定ではOpenWrt標準のsoftware/hardware flow offloadは無効です。NSSの
 測定時もこの状態を維持し、NSSと標準flow offloadの二重適用を避けます。
@@ -49,9 +49,10 @@ profile、firmware load address `0x40000000`、16 MiBのno-map reserved memory�
 qosmio側のIPQ5018定義を使用します。これらはQSDK由来の非upstream仕様なので、
 firmwareの起動ログが取れるまで「動作済み」とは扱いません。
 
-初期seedでは `ATH11K_NSS_SUPPORT` を無効化します。2.4 GHz/5 GHzのath11kを
-通常経路で動かしたまま、NSS core、NSS-DP、ECM NAT44を分離して検証するためです。
-Wi-Fi NSSはNSS-DPとECMが安定した後の別フェーズで有効化します。
+通常seedでは `ATH11K_NSS_SUPPORT` を無効化します。2.4 GHz/5 GHzのath11kを
+通常経路で動かしたまま、有線NSSとECMを検証するためです。Wi-Fi NSSは、
+`nss-setup/enable-ipq5018-wifi-nss.sh`またはworkflow_dispatchの明示入力でだけ
+有効化する実験機能です。
 
 ## 実装レイヤ
 
@@ -73,18 +74,29 @@ Wi-Fi NSSはNSS-DPとECMが安定した後の別フェーズで有効化しま�
 NSSを有効にしない公式OpenWrt相当で、起動、WAN/LAN、QCA8337、2.4 GHz、5 GHz、
 sysupgrade、dual partitionを確認します。
 
-### Phase 1: NSS core manual bring-up
+### Phase 1: NSS core autoload
 
-`nss-firmware-ipq50xx` と `kmod-qca-nss-drv`はイメージに含まれますが、
-driverのautoloadとECMのautostartは無効です。まずLinux/DSAのWAN/LANが生きた
-状態で次を確認します。
+`nss-firmware-ipq50xx` と `kmod-qca-nss-drv`はイメージに含まれ、driverは通常の
+kmodloader autoloadで起動します。ECMのautostartだけは無効です。起動後に、
+手動modprobeなしで次を確認します。
 
 ```text
+lsmod | grep qca_nss_drv
+cat /proc/sys/dev/nss/general/redirect
+grep -i nss /proc/interrupts
 dmesg | grep -Ei 'nss|firmware|qca'
-cat /proc/iomem
-cat /proc/interrupts
-cat /proc/modules
 ```
+
+自動起動の一括判定は、MX2000上で次を実行します。
+
+```sh
+sh /tmp/verify-ipq5018-nss-boot.sh
+```
+
+複数回reboot試験では、各起動後にこの検証を実行し、NSS core boot、`eth0` link、
+WAN DHCP/IPv6を記録します。スクリプトはリポジトリの
+`nss-setup/verify-ipq5018-nss-boot.sh`をMX2000の`/tmp`へコピーして使います。
+実機なしでrebootを実行するCIにはしていません。
 
 SSH後のA/Bテストは、再起動を挟んで別々に実施します。
 
@@ -103,7 +115,7 @@ module parameterが受け付けられない場合は、コマンドが失敗す�
 成功扱いにしません。firmware load、NSS core 0 initialized、driver probe完了が
 得られた後に、GMAC1/`dp2`のlinkが維持されるかを判定します。
 
-初回はECMを有効化しません。NSS core/DMAの状態が確定した後、次で明示的に有効化
+ECMは初期状態で無効です。NSS core/DMAの状態が確定した後、次で明示的に有効化
 できます。
 
 ```sh
@@ -165,9 +177,47 @@ iperf3の双方向通信を確認します。`dp2`を物理WANと誤認してネ
 IPv4 TCP/UDPのroutingとNAT44だけを対象にECM offloadを有効化します。accelerated
 connection数とNSS statisticsが増え、CPU負荷が下がることを確認します。
 
-### Phase 4以降
+### Phase 4: experimental ath11k Wi-Fi NSS
 
-IPv6、bridge/VLAN、PPPoE、SQM、最後にath11k Wi-Fi NSSを個別に追加します。
+Wi-Fi NSSは既定イメージへ混ぜず、明示的な実験フラグで有効化します。
+これは現在のath11k NSS patch、qca-nss-drv WIFIOFFLOAD、QCN6122 overlay、
+512 MiB memory profile、pbuf initを同時に組み込む構成です。Meshとmac80211
+`nss_redirect`は有効化しません。
+
+手動ビルドでは、まず通常seedをコピーしてからopt-inします。
+
+```sh
+cp nss-setup/config-ipq5018.seed .config
+nss-setup/enable-ipq5018-wifi-nss.sh
+make defconfig
+```
+
+GitHub Actionsではworkflow_dispatchの `wifi_nss=true` を指定すると、同じopt-in
+処理を行い、実験用firmware artifactを作成します。通常のpush buildはWi-Fi NSSを
+無効にしたままです。
+
+構成確認の目標値は次のとおりです。
+
+```text
+CONFIG_ATH11K_NSS_SUPPORT=y
+CONFIG_NSS_DRV_WIFIOFFLOAD_ENABLE=y
+CONFIG_NSS_DRV_WIFI_EXT_VDEV_ENABLE=y
+CONFIG_ATH11K_MEM_PROFILE_512M=y
+ath11k nss_offload=1 frame_mode=2
+```
+
+実機では、ECMを無効にしたまま、まず2.4 GHzのLAN内通信、次にQCN6122 5 GHz、
+最後に両radioを確認します。Wi-Fi NSSはIPQ5018で未検証のため、Apple端末の
+4-way handshake失敗、peer再生成、firmware crashに備え、通常seedへ戻せるように
+します。検証時は次を使います。
+
+```sh
+sh /tmp/verify-ipq5018-nss-boot.sh --wifi
+```
+
+### Phase 5以降
+
+IPv6、bridge/VLAN、PPPoE、SQM、Wi-Fi NSSの長時間安定性を個別に追加します。
 機能を一度に複数有効化しません。
 
 ## 更新運用
@@ -192,6 +242,7 @@ IPQ5018 DT、MX2000 device profileの順に再検証します。NSS firmware pac
 
 ## 現時点の判定
 
-MX2000の通常OpenWrt対応とNSS-DP/QCA8337経路は確認済みです。NSS core/ECMの実機
-bring-upは、このブランチのビルドイメージを実機へ導入してから判定します。現時点
-では、NSS対応「実装済み・未検証」とし、完成済みとは記載しません。
+MX2000の通常OpenWrt対応とNSS-DP/QCA8337経路、有線NSS core/ECM bring-upは
+実機で確認済みです。production autoloadはこのブランチで有効化しましたが、
+reboot回数を含む長時間試験は別途必要です。ath11k Wi-Fi NSSは実験機能として
+実装済み・未検証であり、完成済みとは扱いません。
