@@ -3,13 +3,14 @@
 #include "ipq5018.dtsi"
 #include "ipq5018-mx-base.dtsi"
 #include "ipq5018-qcn6122.dtsi"
+#include "ipq5018-nss.dtsi"
 
 / {
 	model = "Linksys MX2000";
 	compatible = "linksys,mx2000", "qcom,ipq5018";
 
 	chosen {
-		bootargs-append = " root=/dev/ubiblock0_0 coherent_pool=2M";
+		bootargs-append = " root=/dev/ubiblock0_0 coherent_pool=2M clk_ignore_unused pd_ignore_unused";
 		stdout-path = "serial0:115200n8";
 	};
 };
