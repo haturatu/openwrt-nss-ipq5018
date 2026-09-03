@@ -69,6 +69,20 @@ jobs:
           restore-keys: |
             openwrt-dl-v2-${{ github.repository }}-
 
+      - name: Configure build
+        run: |
+          cat >> .config <<EOF
+          CONFIG_ALL=y
+          CONFIG_ALL_KMODS=y
+          CONFIG_DEVEL=y
+          CONFIG_AUTOREMOVE=y
+          CONFIG_CCACHE=y
+          CONFIG_KERNEL_WERROR=y
+          CONFIG_TARGET_${{ matrix.target }}=y
+          CONFIG_TARGET_${{ matrix.target }}_${{ matrix.subtarget }}=y
+          EOF
+          make defconfig
+
       - name: Restore workspace host tools
         id: host-tools-cache
         uses: actions/cache@v4
@@ -101,20 +115,6 @@ jobs:
           key: openwrt-ccache-v3-packages-${{ github.repository }}-${{ matrix.target }}-${{ matrix.subtarget }}-${{ matrix.kernel }}-${{ github.run_id }}
           restore-keys: |
             openwrt-ccache-v3-packages-${{ github.repository }}-${{ matrix.target }}-${{ matrix.subtarget }}-${{ matrix.kernel }}-
-
-      - name: Configure build
-        run: |
-          cat >> .config <<EOF
-          CONFIG_ALL=y
-          CONFIG_ALL_KMODS=y
-          CONFIG_DEVEL=y
-          CONFIG_AUTOREMOVE=y
-          CONFIG_CCACHE=y
-          CONFIG_KERNEL_WERROR=y
-          CONFIG_TARGET_${{ matrix.target }}=y
-          CONFIG_TARGET_${{ matrix.target }}_${{ matrix.subtarget }}=y
-          EOF
-          make defconfig
 
       - name: Restore toolchain
         id: toolchain-cache
