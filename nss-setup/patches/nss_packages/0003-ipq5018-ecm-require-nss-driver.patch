@@ -1,0 +1,12 @@
+diff --git a/qca-nss-ecm/files/qca-nss-ecm.init b/qca-nss-ecm/files/qca-nss-ecm.init
+--- a/qca-nss-ecm/files/qca-nss-ecm.init
++++ b/qca-nss-ecm/files/qca-nss-ecm.init
+@@ -213,3 +213,8 @@ start_service() {
+   }
+ 
++  [ -d /sys/module/qca_nss_drv ] || {
++    logger -p user.err -t qca-nss-ecm "NSS driver is not loaded; refusing to start ECM"
++    return 1
++  }
++
+   load_ecm

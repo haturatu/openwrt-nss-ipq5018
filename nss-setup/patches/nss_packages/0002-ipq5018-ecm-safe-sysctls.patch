@@ -84,7 +84,7 @@ index 8fc3379..f0815db 100644
  
      sleep 1
      rmmod ecm
-@@ -184,6 +205,20 @@ reload_service() {
+@@ -184,6 +205,15 @@ reload_service() {
  }
  
  start_service() {
@@ -95,11 +95,6 @@ index 8fc3379..f0815db 100644
 +  [ "$enabled" -eq 1 ] || {
 +    logger -t qca-nss-ecm "ECM autostart disabled; set ecm.global.enable=1 to enable"
 +    return 0
-+  }
-+
-+  [ -d /sys/module/qca_nss_drv ] || {
-+    logger -p user.err -t qca-nss-ecm "NSS driver is not loaded; refusing to start ECM"
-+    return 1
 +  }
 +
    load_ecm
