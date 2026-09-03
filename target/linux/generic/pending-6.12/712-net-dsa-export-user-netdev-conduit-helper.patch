@@ -1,0 +1,57 @@
+From 8d2b1c7c4b6e4d0e9f2a7b1c6d5e4f3a2b1c0d9e Mon Sep 17 00:00:00 2001
+From: haturatu <haturatu@users.noreply.github.com>
+Date: Thu, 3 Sep 2026 00:00:00 +0900
+Subject: [PATCH] net: dsa: export user netdev conduit lookup helper
+
+DSA user ports are represented by separate netdevices while acceleration
+drivers need to resolve the CPU-port conduit. Keep the DSA private data
+access in the DSA core and expose a small helper for external modules.
+
+Signed-off-by: haturatu <haturatu@users.noreply.github.com>
+---
+ include/net/dsa.h |  5 +++++
+ net/dsa/user.c   | 15 +++++++++++++++
+ 2 files changed, 20 insertions(+)
+
+--- a/include/net/dsa.h
++++ b/include/net/dsa.h
+@@ -1394,8 +1394,13 @@
+ #if IS_ENABLED(CONFIG_NET_DSA)
+ bool dsa_user_dev_check(const struct net_device *dev);
++struct net_device *dsa_user_dev_to_conduit(const struct net_device *dev);
+ #else
+ static inline bool dsa_user_dev_check(const struct net_device *dev)
+ {
+ 	return false;
+ }
++static inline struct net_device *dsa_user_dev_to_conduit(const struct net_device *dev)
++{
++	return NULL;
++}
+ #endif
+--- a/net/dsa/user.c
++++ b/net/dsa/user.c
+@@ -2909,6 +2909,21 @@ bool dsa_user_dev_check(const struct net_d
+ }
+ EXPORT_SYMBOL_GPL(dsa_user_dev_check);
+ 
++struct net_device *dsa_user_dev_to_conduit(const struct net_device *dev)
++{
++	struct dsa_port *dp;
++
++	if (!dsa_user_dev_check(dev))
++		return NULL;
++
++	dp = dsa_user_to_port(dev);
++	if (!dp)
++		return NULL;
++
++	return dsa_port_to_conduit(dp);
++}
++EXPORT_SYMBOL_GPL(dsa_user_dev_to_conduit);
++
+ static int dsa_user_changeupper(struct net_device *dev,
+ 				struct netdev_notifier_changeupper_info *info)
+ {
+-- 
+2.40.1
