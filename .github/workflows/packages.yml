@@ -29,8 +29,75 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  prepare-host-tools:
+    name: Prepare workspace host tools
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            aria2 autoconf automake bison build-essential \
+            ccache clang flex g++ gawk gettext git \
+            libncurses-dev libssl-dev patch perl python3 \
+            rsync unzip wget xsltproc zlib1g-dev
+
+      - name: Cache downloads
+        uses: actions/cache@v4
+        with:
+          path: dl
+          key: openwrt-dl-v2-${{ github.repository }}-${{ hashFiles('feeds.conf.default', 'include/download.mk') }}
+          restore-keys: |
+            openwrt-dl-v2-${{ github.repository }}-
+
+      - name: Configure host tools
+        run: |
+          cat >> .config <<EOF
+          CONFIG_ALL=y
+          CONFIG_ALL_KMODS=y
+          CONFIG_DEVEL=y
+          CONFIG_AUTOREMOVE=y
+          CONFIG_CCACHE=y
+          CONFIG_KERNEL_WERROR=y
+          CONFIG_TARGET_x86=y
+          CONFIG_TARGET_x86_64=y
+          EOF
+          make defconfig
+
+      - name: Restore workspace host tools
+        id: host-tools-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            staging_dir/host
+            build_dir/host
+          key: openwrt-hosttools-v3-${{ github.repository }}-${{ runner.os }}-${{ hashFiles('tools/**', 'include/host-build.mk', 'include/host-compile.mk', 'include/prereq-build.mk', 'scripts/ext-tools.sh') }}
+          restore-keys: |
+            openwrt-hosttools-v3-${{ github.repository }}-${{ runner.os }}-
+
+      - name: Build workspace host tools
+        if: steps.host-tools-cache.outputs.cache-hit != 'true'
+        run: |
+          rm -rf -- staging_dir/host build_dir/host
+          make tools/install -j"$(nproc)" CONFIG_DOWNLOAD_TOOL_CUSTOM=aria2c V=s
+
+      - name: Verify workspace host tools
+        run: |
+          test -d staging_dir/host
+          test ! -L staging_dir/host
+          test ! -L build_dir/host
+          test -x staging_dir/host/bin/autom4te
+          staging_dir/host/bin/autom4te --version
+
   build-packages:
     name: Build core packages (${{ matrix.target }}/${{ matrix.subtarget }})
+    needs: prepare-host-tools
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -84,7 +151,6 @@ jobs:
           make defconfig
 
       - name: Restore workspace host tools
-        id: host-tools-cache
         uses: actions/cache@v4
         with:
           path: |
@@ -93,12 +159,6 @@ jobs:
           key: openwrt-hosttools-v3-${{ github.repository }}-${{ runner.os }}-${{ hashFiles('tools/**', 'include/host-build.mk', 'include/host-compile.mk', 'include/prereq-build.mk', 'scripts/ext-tools.sh') }}
           restore-keys: |
             openwrt-hosttools-v3-${{ github.repository }}-${{ runner.os }}-
-
-      - name: Build workspace host tools
-        if: steps.host-tools-cache.outputs.cache-hit != 'true'
-        run: |
-          rm -rf -- staging_dir/host build_dir/host
-          make tools/install -j"$(nproc)" CONFIG_DOWNLOAD_TOOL_CUSTOM=aria2c V=s
 
       - name: Verify workspace host tools
         run: |
