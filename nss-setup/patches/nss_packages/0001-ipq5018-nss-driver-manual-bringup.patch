@@ -330,5 +330,4 @@ index 4a8b766..4eee96d 100644
  config nss 'general'
  	option enable_rps	'1'
  	option enable_log	'1'
-+	option manual_bringup	'1'
-
++	option manual_bringup	'0'
