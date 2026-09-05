@@ -5,6 +5,7 @@ mem_profile=512
 config_file=.config
 dts_file=target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-mx2000.dts
 pbuf_file=package/kernel/mac80211/files/pbuf.uci
+positional_args=0
 
 error() {
 	printf 'ERROR %s\n' "$*" >&2
@@ -43,16 +44,22 @@ while [ "$#" -gt 0 ]; do
 		exit 2
 		;;
 	*)
-		if [ "$config_file" = .config ]; then
+		case "$positional_args" in
+		0)
 			config_file=$1
-		elif [ "$dts_file" = target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-mx2000.dts ]; then
+			;;
+		1)
 			dts_file=$1
-		elif [ "$pbuf_file" = package/kernel/mac80211/files/pbuf.uci ]; then
+			;;
+		2)
 			pbuf_file=$1
-		else
+			;;
+		*)
 			error "unexpected positional argument: $1"
 			exit 2
-		fi
+			;;
+		esac
+		positional_args=$((positional_args + 1))
 		;;
 	esac
 	shift

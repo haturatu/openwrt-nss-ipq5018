@@ -127,6 +127,7 @@ jobs:
       - name: Generate IPQ5018 config
         run: |
           cp nss-setup/config-ipq5018.seed .config
+          make defconfig
           wifi_nss='${{ inputs.wifi_nss || false }}'
           wifi_nss_mem_profile='${{ inputs.wifi_nss_mem_profile || '512' }}'
           if [ "$wifi_nss" = true ]; then
@@ -140,7 +141,6 @@ jobs:
           fi
           echo "IPQ5018_WIFI_NSS=$wifi_nss" >> "$GITHUB_ENV"
           echo "IPQ5018_WIFI_NSS_MEM_PROFILE=$wifi_nss_mem_profile" >> "$GITHUB_ENV"
-          make defconfig
           test "$(sed -n 's/^CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_linksys_mx2000=//p' .config)" = y
           grep -Eq '^CONFIG_NSS_FIRMWARE_VERSION_11_4=y$' .config
           grep -Eq '^CONFIG_PACKAGE_nss-firmware-ipq50xx=y$' .config
