@@ -1,0 +1,21 @@
+name: Build IPQ5018 Wi-Fi NSS profile matrix
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Wi-Fi NSS ${{ matrix.mem_profile }}M
+    strategy:
+      fail-fast: false
+      matrix:
+        mem_profile:
+          - '256'
+          - '512'
+    uses: ./.github/workflows/ipq5018.yml
+    with:
+      wifi_nss: true
+      wifi_nss_mem_profile: ${{ matrix.mem_profile }}

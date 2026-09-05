@@ -40,6 +40,25 @@ on:
         required: true
         type: boolean
         default: false
+      wifi_nss_mem_profile:
+        description: ath11k and pbuf memory profile for Wi-Fi NSS
+        required: true
+        type: choice
+        default: '512'
+        options:
+          - '256'
+          - '512'
+
+  workflow_call:
+    inputs:
+      wifi_nss:
+        required: false
+        type: boolean
+        default: false
+      wifi_nss_mem_profile:
+        required: false
+        type: string
+        default: '512'
 
 permissions:
   contents: read
@@ -108,14 +127,19 @@ jobs:
       - name: Generate IPQ5018 config
         run: |
           cp nss-setup/config-ipq5018.seed .config
-          wifi_nss='${{ inputs.wifi_nss }}'
+          wifi_nss='${{ inputs.wifi_nss || false }}'
+          wifi_nss_mem_profile='${{ inputs.wifi_nss_mem_profile || '512' }}'
           if [ "$wifi_nss" = true ]; then
-            nss-setup/enable-ipq5018-wifi-nss.sh .config \
+            nss-setup/enable-ipq5018-wifi-nss.sh \
+              --mem-profile "$wifi_nss_mem_profile" \
+              .config \
               target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-mx2000.dts
           else
             wifi_nss=false
+            wifi_nss_mem_profile=512
           fi
           echo "IPQ5018_WIFI_NSS=$wifi_nss" >> "$GITHUB_ENV"
+          echo "IPQ5018_WIFI_NSS_MEM_PROFILE=$wifi_nss_mem_profile" >> "$GITHUB_ENV"
           make defconfig
           test "$(sed -n 's/^CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_linksys_mx2000=//p' .config)" = y
           grep -Eq '^CONFIG_NSS_FIRMWARE_VERSION_11_4=y$' .config
@@ -130,7 +154,13 @@ jobs:
             grep -Eq '^CONFIG_NSS_DRV_WIFIOFFLOAD_ENABLE=y$' .config
             grep -Eq '^CONFIG_NSS_DRV_WIFI_EXT_VDEV_ENABLE=y$' .config
             grep -Eq '^CONFIG_PACKAGE_MAC80211_NSS_SUPPORT=y$' .config
-            grep -Eq '^CONFIG_ATH11K_MEM_PROFILE_512M=y$' .config
+            grep -Eq "^CONFIG_ATH11K_MEM_PROFILE_${wifi_nss_mem_profile}M=y$" .config
+            if [ "$wifi_nss_mem_profile" = 512 ]; then
+              grep -Eq '^# CONFIG_ATH11K_MEM_PROFILE_256M is not set$' .config
+            else
+              grep -Eq '^# CONFIG_ATH11K_MEM_PROFILE_512M is not set$' .config
+            fi
+            grep -Eq "^[[:space:]]*option[[:space:]]+memory_profile[[:space:]]+'${wifi_nss_mem_profile}mb'[[:space:]]*$" package/kernel/mac80211/files/pbuf.uci
             if grep -Eq '^CONFIG_ATH11K_NSS_MESH_SUPPORT=y$' .config; then
               echo 'ERROR: ath11k NSS mesh support must remain disabled for the experiment' >&2
               exit 1
@@ -205,6 +235,8 @@ jobs:
           sh -n nss-setup/verify-wired-ecm.sh
           sh -n nss-setup/enable-ipq5018-wifi-nss.sh
           sh -n nss-setup/verify-ipq5018-nss-boot.sh
+          sh -n tests/test-linksys-mx-upgrade.sh
+          sh -n tests/test-ipq5018-wifi-profile.sh
           sh -n package/kernel/mac80211/files/qca-nss-pbuf.init
           sh -n target/linux/qualcommax/ipq50xx/base-files/etc/uci-defaults/90-ipq5018-nss-manual
           sh -n target/linux/qualcommax/ipq50xx/base-files/usr/sbin/nss-ipq5018-manual
@@ -213,6 +245,8 @@ jobs:
             exit 1
           fi
           grep -Fq 'ip addr show' nss-setup/diagnose-ipq5018.sh
+          tests/test-linksys-mx-upgrade.sh
+          tests/test-ipq5018-wifi-profile.sh
 
       - name: Verify MX2000 staged bring-up source
         run: |
@@ -240,8 +274,11 @@ jobs:
           grep -Fq 'qca-ssdk: phy-resolve' package/kernel/qca-ssdk/patches/131-mp-trace-dsa-port-resolution.patch
           grep -Fq 'qca_ssdk_phydev_to_port_valid' package/kernel/qca-ssdk/patches/132-mp-ignore-unmapped-phy-notifications.patch
           grep -Fq 'skip unmapped MP PHY notification' package/kernel/qca-ssdk/patches/132-mp-ignore-unmapped-phy-notifications.patch
+          grep -Fq 'NSS WIFILI target resolve:' package/kernel/mac80211/patches/nss/ath11k/999-908-ath11k-trace-ipq5018-wifili-interface-allocation.patch
+          grep -Fq 'NSS WIFILI resolve:' package/kernel/mac80211/patches/nss/ath11k/999-908-ath11k-trace-ipq5018-wifili-interface-allocation.patch
           if [ "$IPQ5018_WIFI_NSS" = true ]; then
             grep -Fx '#include "ipq5018-nss-qcn6122.dtsi"' target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-mx2000.dts
+            grep -Eq "^[[:space:]]*option[[:space:]]+memory_profile[[:space:]]+'${IPQ5018_WIFI_NSS_MEM_PROFILE}mb'[[:space:]]*$" package/kernel/mac80211/files/pbuf.uci
           else
             if grep -Fx '#include "ipq5018-nss-qcn6122.dtsi"' target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-mx2000.dts; then
               echo 'ERROR: QCN6122 NSS overlay must not be enabled in the production image' >&2
@@ -286,6 +323,27 @@ jobs:
             grep -Eq '^kmod-ath11k([_-]|[[:space:]])' "$manifest"
           fi
 
+          rootfs_dir=$(find build_dir/target-* -type d -path '*/root-*' -print -quit)
+          test -n "$rootfs_dir"
+          test -f "$rootfs_dir/etc/config/nss"
+          test -f "$rootfs_dir/etc/config/ecm"
+          find "$rootfs_dir/lib/modules" -type f -name 'qca-nss-dp.ko*' -print -quit | grep -q .
+          if [ "$IPQ5018_WIFI_NSS" = true ]; then
+            find "$rootfs_dir/lib/modules" -type f -name 'ath11k.ko*' -print -quit | grep -q .
+            find "$rootfs_dir/lib/modules" -type f -name 'qca-nss-drv.ko*' -print -quit | grep -q .
+            test -f "$rootfs_dir/etc/modules.d/ath11k"
+            grep -Eq 'nss_offload=1([[:space:]]|$)' "$rootfs_dir/etc/modules.d/ath11k"
+            grep -Eq 'frame_mode=2([[:space:]]|$)' "$rootfs_dir/etc/modules.d/ath11k"
+            grep -Eq "^[[:space:]]*option[[:space:]]+memory_profile[[:space:]]+'${IPQ5018_WIFI_NSS_MEM_PROFILE}mb'[[:space:]]*$" "$rootfs_dir/etc/config/pbuf"
+          else
+            if [ -f "$rootfs_dir/etc/modules.d/ath11k" ]; then
+              if grep -Eq 'nss_offload=1|frame_mode=2' "$rootfs_dir/etc/modules.d/ath11k"; then
+                echo 'ERROR: wired production image contains Wi-Fi NSS module parameters' >&2
+                exit 1
+              fi
+            fi
+          fi
+
       - name: Collect build metadata
         if: always()
         run: |
@@ -294,6 +352,7 @@ jobs:
             echo "date=$(date -u +%FT%TZ)"
             echo "event=${{ github.event_name }}"
             echo "wifi_nss=${IPQ5018_WIFI_NSS:-false}"
+            echo "wifi_nss_mem_profile=${IPQ5018_WIFI_NSS_MEM_PROFILE:-512}"
             echo "target=qualcommax/ipq50xx"
             echo "device=linksys_mx2000"
             echo "workflow_run=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
@@ -311,7 +370,7 @@ jobs:
         if: github.event_name != 'pull_request' && success()
         uses: actions/upload-artifact@v4
         with:
-          name: openwrt-nss-ipq5018-${{ github.sha }}
+          name: openwrt-nss-ipq5018-${{ github.sha }}-${{ inputs.wifi_nss && format('wifi-nss-{0}', inputs.wifi_nss_mem_profile) || 'wired-nss' }}
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
