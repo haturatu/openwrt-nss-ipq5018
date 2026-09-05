@@ -1,13 +1,13 @@
 --- a/drivers/net/wireless/ath/ath11k/nss.c
 +++ b/drivers/net/wireless/ath/ath11k/nss.c
-@@ -1820,6 +1820,8 @@ static int ath11k_nss_init(struct ath11k_base *ab)
+@@ -4427,4 +4427,6 @@ static int ath11k_nss_init(struct ath11k_base *ab)
  	target_type = ath11k_nss_get_target_type(ab);
  
 +	ath11k_info(ab, "NSS WIFILI target resolve: hw_rev=%d target_type=%u userpd_id=%d\n",
 +		   ab->hw_rev, target_type, ab->userpd_id);
  	if (target_type == ATH11K_WIFILI_TARGET_TYPE_UNKNOWN)
  		return -ENOTSUPP;
-@@ -1878,7 +1880,8 @@ static int ath11k_nss_init(struct ath11k_base *ab)
+@@ -4485,6 +4487,7 @@ static int ath11k_nss_init(struct ath11k_base *ab)
  	ab->nss.if_num = ath11k_nss_get_interface_type(ab);
  
 -	ath11k_info(ab, "nss init soc nss if_num %d userpd_id %d\n", ab->nss.if_num, ab->userpd_id);
