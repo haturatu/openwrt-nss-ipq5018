@@ -10,14 +10,11 @@ fail() {
 	exit 1
 }
 
-# Map the requested --mem-profile argument to the expected kernel config
-# symbol and pbuf profile name. 1024 is the experimental 1G profile for
-# the 512MB MX2000 and maps to CONFIG_ATH11K_MEM_PROFILE_1G / '1gb'.
+# MX2000 Wi-Fi NSS bring-up uses the conservative profile only.  The
+# corresponding pbuf setting must always move with the ath11k profile.
 expected_for() {
 	case "$1" in
 	256) printf 'CONFIG_ATH11K_MEM_PROFILE_256M 256mb' ;;
-	512) printf 'CONFIG_ATH11K_MEM_PROFILE_512M 512mb' ;;
-	1024|1g|1G) printf 'CONFIG_ATH11K_MEM_PROFILE_1G 1gb' ;;
 	*) return 1 ;;
 	esac
 }
@@ -51,10 +48,6 @@ run_profile_test() {
 	done
 	grep -Eq "^[[:space:]]*option[[:space:]]+memory_profile[[:space:]]+'${want_pbuf}'[[:space:]]*$" "$pbuf" || \
 		fail "pbuf profile does not match ${want_pbuf} for --mem-profile $profile"
-	grep -Fqx '#include "ipq5018-nss-qcn6122.dtsi"' "$dts" || \
-		fail 'QCN6122 NSS overlay was not enabled'
-	[ "$(grep -Fc '#include "ipq5018-nss-qcn6122.dtsi"' "$dts")" -eq 1 ] || \
-		fail 'QCN6122 NSS overlay was duplicated'
 	grep -Fqx '#include "ipq5018-mx2000-nss-wifi.dtsi"' "$dts" || \
 		fail 'MX2000 Wi-Fi NSS overlay (fw-memory-mode=2) was not enabled'
 	[ "$(grep -Fc '#include "ipq5018-mx2000-nss-wifi.dtsi"' "$dts")" -eq 1 ] || \
@@ -70,8 +63,6 @@ run_profile_test() {
 }
 
 run_profile_test 256
-run_profile_test 512
-run_profile_test 1024
 
 # The MX2000-specific overlay must select firmware memory mode 2 on both
 # radios (not just one). This is a WLAN firmware layout selector,
@@ -79,6 +70,12 @@ run_profile_test 1024
 [ "$(grep -Fc 'qcom,ath11k-fw-memory-mode = <2>;' \
 	target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-mx2000-nss-wifi.dtsi)" -eq 2 ] || \
 	fail 'MX2000 Wi-Fi NSS overlay must set fw-memory-mode 2 on both radios'
+grep -Fq 'bootargs-append = " root=/dev/ubiblock0_0 coherent_pool=2M clk_ignore_unused pd_ignore_unused";' \
+	target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-mx2000-nss-wifi.dtsi || \
+	fail 'MX2000 Wi-Fi NSS overlay must retain pd_ignore_unused during bring-up'
+[ "$(grep -Fc 'nss-radio-priority = <1>;' \
+	target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-qcn6122.dtsi)" -eq 2 ] || \
+	fail 'QCN6122 radio definitions must each carry NSS priority 1'
 
 config="$test_dir/config-invalid"
 dts="$test_dir/dts-invalid"
@@ -86,8 +83,10 @@ pbuf="$test_dir/pbuf-invalid"
 cp nss-setup/config-ipq5018.seed "$config"
 cp target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-mx2000.dts "$dts"
 cp package/kernel/mac80211/files/pbuf.uci "$pbuf"
-if "$helper" --mem-profile 999 --pbuf-file "$pbuf" "$config" "$dts" >/dev/null 2>&1; then
-	fail 'unsupported memory profile was accepted'
-fi
+for profile in 512 1024 999; do
+	if "$helper" --mem-profile "$profile" --pbuf-file "$pbuf" "$config" "$dts" >/dev/null 2>&1; then
+		fail "unsafe or unsupported memory profile was accepted: $profile"
+	fi
+done
 
 printf 'INFO IPQ5018 Wi-Fi NSS profile checks passed\n'

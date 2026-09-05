@@ -24,17 +24,8 @@ permissions:
 
 jobs:
   build:
-    name: Wi-Fi NSS ${{ matrix.mem_profile }}M
-    strategy:
-      fail-fast: false
-      matrix:
-        # 512 is the supported default on the 512MB MX2000; 1024 is the
-        # experimental 1G A/B comparison. 256 stays covered by the local
-        # shell test only to keep full-image build time down.
-        mem_profile:
-          - '512'
-          - '1024'
+    name: Wi-Fi NSS 256M bring-up
     uses: ./.github/workflows/ipq5018.yml
     with:
       wifi_nss: true
-      wifi_nss_mem_profile: ${{ matrix.mem_profile }}
+      wifi_nss_mem_profile: '256'

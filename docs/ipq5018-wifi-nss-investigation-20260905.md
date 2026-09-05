@@ -46,7 +46,7 @@ release の Git revision だけではビルド設定や成果物を特定でき�
 ## 対応と実機判定の順序
 
 1. 修正パッチを含む HEAD で Wi-Fi matrix を実行し、256M/512M の成功・失敗を別々に確認する。
-   手動起動するなら `ipq5018.yml` の `wifi_nss=true` と `wifi_nss_mem_profile=256` または `512` を明示する。
+   手動起動するなら `ipq5018.yml` の `wifi_nss=true` と `wifi_nss_mem_profile=256` を明示する。MX2000のWi-Fi NSS bring-upでは512M以上は拒否する。
 2. build-metadata の `wifi_nss=true`、profile、commit とイメージ SHA-256 を照合する。
    最終 rootfs 内の ath11k に `nss_offload` があり、pbuf、autoload 設定、Wi-Fi 対応 NSS driver が含まれることを確認する。
 3. 通常 ath11k と NSS 版のモジュールだけを混在させず、整合したイメージで検証する。

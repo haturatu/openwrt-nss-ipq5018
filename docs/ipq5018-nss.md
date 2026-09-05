@@ -180,23 +180,23 @@ connection数とNSS statisticsが増え、CPU負荷が下がることを確認�
 ### Phase 4: experimental ath11k Wi-Fi NSS
 
 Wi-Fi NSSは既定イメージへ混ぜず、明示的な実験フラグで有効化します。
-これは現在のath11k NSS patch、qca-nss-drv WIFIOFFLOAD、QCN6122 overlay、
-選択可能な256/512 MiB memory profile、pbuf initを同時に組み込む構成です。Meshとmac80211
-`nss_redirect`は有効化しません。
+これは現在のath11k NSS patch、qca-nss-drv WIFIOFFLOAD、QCN6122 priority、
+256 MiB ath11k/pbuf profile、CMN PLL boot fix、Wi-Fi NSS専用の
+`clk_ignore_unused pd_ignore_unused`を同時に組み込む構成です。Meshとmac80211
+`nss_redirect`は有効化しません。後者のbootargsは診断用で、通常イメージには入りません。
 
 手動ビルドでは、まず通常seedをコピーしてからopt-inします。
 
 ```sh
 cp nss-setup/config-ipq5018.seed .config
-nss-setup/enable-ipq5018-wifi-nss.sh --mem-profile 512
+nss-setup/enable-ipq5018-wifi-nss.sh --mem-profile 256
 make defconfig
 ```
 
-`--mem-profile 256`も指定でき、ath11kのビルドprofileと`/etc/config/pbuf`を
-同じ値へ変更します。GitHub Actionsではworkflow_dispatchの`wifi_nss=true`と
-`wifi_nss_mem_profile=256|512`を指定できます。また、`Build IPQ5018 Wi-Fi NSS
-profile matrix`を起動すると、256M/512Mを並列ビルドして比較できます。通常のpush
-buildはWi-Fi NSSを無効にしたままです。
+MX2000はLinuxから約416 MiBしか見えないため、bring-up中は256Mだけを許可します。
+helperとGitHub Actionsは512M/1024Mを明示的に拒否し、ath11kのビルドprofileと
+`/etc/config/pbuf`を必ず`256M`/`256mb`へ揃えます。通常のpush buildはWi-Fi NSSを
+無効にしたままです。
 
 構成確認の目標値は次のとおりです。
 
@@ -204,8 +204,8 @@ buildはWi-Fi NSSを無効にしたままです。
 CONFIG_ATH11K_NSS_SUPPORT=y
 CONFIG_NSS_DRV_WIFIOFFLOAD_ENABLE=y
 CONFIG_NSS_DRV_WIFI_EXT_VDEV_ENABLE=y
-CONFIG_ATH11K_MEM_PROFILE_256M=y  # または CONFIG_ATH11K_MEM_PROFILE_512M=y
-option memory_profile '256mb'       # ath11k profileと同じ値
+CONFIG_ATH11K_MEM_PROFILE_256M=y
+option memory_profile '256mb'
 ath11k nss_offload=1 frame_mode=2
 ```
 

@@ -116,6 +116,6 @@
 };
 
 &wifi {
-	// IPQ5018
+	// IPQ5018 internal 2.4GHz radio
 	nss-radio-priority = <0>;
 };

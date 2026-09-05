@@ -20,5 +20,13 @@
 &wifi1 {
 	// QCN6122 5 GHz radio
 	qcom,ath11k-fw-memory-mode = <2>;
-	nss-radio-priority = <1>;
+};
+
+&{/chosen} {
+	/*
+	 * Diagnostic safety net for the IPQ5018 Wi-Fi NSS bring-up only.
+	 * The normal MX2000 image does not carry this argument.  Remove it
+	 * after the dependent power domain is identified and held explicitly.
+	 */
+	bootargs-append = " root=/dev/ubiblock0_0 coherent_pool=2M clk_ignore_unused pd_ignore_unused";
 };
