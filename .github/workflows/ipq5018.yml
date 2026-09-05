@@ -328,6 +328,8 @@ jobs:
           test -f "$rootfs_dir/etc/config/nss"
           test -f "$rootfs_dir/etc/config/ecm"
           find "$rootfs_dir/lib/modules" -type f -name 'qca-nss-dp.ko*' -print -quit | grep -q .
+          find "$rootfs_dir/lib/modules" -type f -name 'qca*nss*drv.ko*' -print -quit | grep -q .
+          find "$rootfs_dir/etc/modules.d" -type f -exec grep -l 'qca-nss-drv' {} + | grep -q .
           if [ "$IPQ5018_WIFI_NSS" = true ]; then
             find "$rootfs_dir/lib/modules" -type f -name 'ath11k.ko*' -print -quit | grep -q .
             find "$rootfs_dir/lib/modules" -type f -name 'qca-nss-drv.ko*' -print -quit | grep -q .
