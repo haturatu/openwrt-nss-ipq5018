@@ -41,6 +41,9 @@ patch_is_applied() {
 		0008-ecm-dsa-conduit-helper.patch)
 			grep -Fq 'dsa_user_dev_to_conduit' "$feed_dir/qca-nss-ecm/patches/0029-ipq5018-ecm-dsa-conduit-helper.patch"
 			;;
+		0009-ipq5018-ecm-tcp-rule-trace.patch)
+			grep -Fq 'ECM-TCP-RULE' "$feed_dir/qca-nss-ecm/patches/0030-ipq5018-ecm-tcp-rule-trace.patch"
+			;;
 		*)
 			return 1
 			;;

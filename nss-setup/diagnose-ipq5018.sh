@@ -77,7 +77,7 @@ dump_resolution_trace() {
 		return 0
 	fi
 
-	trace=$(dmesg | grep -E 'ECM-(DSA|NSS):|qca-ssdk:' || true)
+	trace=$(dmesg | grep -E 'ECM-(DSA|NSS|TCP-(CT|RULE)):|qca-ssdk:' || true)
 	if [ -z "$trace" ]; then
 		warn 'no ECM/SSDK resolution trace lines'
 		return 0

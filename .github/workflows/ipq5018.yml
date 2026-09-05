@@ -276,6 +276,8 @@ jobs:
           grep -Fq 'ECM-NSS: rule-submit' feeds/nss_packages/qca-nss-ecm/patches/0028-ipq5018-ecm-rule-resolution-trace.patch
           grep -Fq 'dsa_user_dev_to_conduit' target/linux/generic/pending-6.12/712-net-dsa-export-user-netdev-conduit-helper.patch
           grep -Fq 'dsa_user_dev_to_conduit' feeds/nss_packages/qca-nss-ecm/patches/0029-ipq5018-ecm-dsa-conduit-helper.patch
+          grep -Fq 'ECM-TCP-CT' feeds/nss_packages/qca-nss-ecm/patches/0030-ipq5018-ecm-tcp-rule-trace.patch
+          grep -Fq 'ECM-TCP-RULE' feeds/nss_packages/qca-nss-ecm/patches/0030-ipq5018-ecm-tcp-rule-trace.patch
           grep -Fq 'dsa_user_dev_check' package/kernel/qca-ssdk/patches/130-mp-ignore-dsa-user-port-events.patch
           grep -Fq 'qca-ssdk: notifier' package/kernel/qca-ssdk/patches/131-mp-trace-dsa-port-resolution.patch
           grep -Fq 'qca-ssdk: phy-resolve' package/kernel/qca-ssdk/patches/131-mp-trace-dsa-port-resolution.patch
