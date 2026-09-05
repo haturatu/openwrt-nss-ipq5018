@@ -47,6 +47,9 @@ patch_is_applied() {
 		0010-ipq5018-ecm-tcp-state-guard.patch)
 			grep -Fq 'ECM-TCP-DEFER' "$feed_dir/qca-nss-ecm/patches/0031-ipq5018-ecm-tcp-state-guard.patch"
 			;;
+		0011-ipq5018-ecm-tcp-defer-fsm-trace.patch)
+			grep -Fq 'ECM-TCP-DEFER-FSM' "$feed_dir/qca-nss-ecm/patches/0032-ipq5018-ecm-tcp-defer-fsm-trace.patch"
+			;;
 		*)
 			return 1
 			;;
