@@ -44,6 +44,9 @@ patch_is_applied() {
 		0009-ipq5018-ecm-tcp-rule-trace.patch)
 			grep -Fq 'ECM-TCP-RULE' "$feed_dir/qca-nss-ecm/patches/0030-ipq5018-ecm-tcp-rule-trace.patch"
 			;;
+		0010-ipq5018-ecm-tcp-state-guard.patch)
+			grep -Fq 'ECM-TCP-DEFER' "$feed_dir/qca-nss-ecm/patches/0031-ipq5018-ecm-tcp-state-guard.patch"
+			;;
 		*)
 			return 1
 			;;

@@ -77,7 +77,7 @@ dump_resolution_trace() {
 		return 0
 	fi
 
-	trace=$(dmesg | grep -E 'ECM-(DSA|NSS|TCP-(CT|RULE)):|qca-ssdk:' || true)
+	trace=$(dmesg | grep -E 'ECM-(DSA|NSS|TCP-(CT|RULE|DEFER)):|qca-ssdk:' || true)
 	if [ -z "$trace" ]; then
 		warn 'no ECM/SSDK resolution trace lines'
 		return 0
@@ -149,6 +149,12 @@ if [ -d /sys/module/qca_nss_drv ]; then
 	dump_module_parameters /sys/module/qca_nss_drv
 else
 	warn 'module=qca_nss_drv state=not-loaded'
+fi
+if [ -d /sys/module/ecm ]; then
+	info 'module=ecm state=loaded'
+	dump_module_parameters /sys/module/ecm
+else
+	warn 'module=ecm state=not-loaded'
 fi
 for sysctl in /proc/sys/dev/nss/general/redirect; do
 	[ -e "$sysctl" ] || continue

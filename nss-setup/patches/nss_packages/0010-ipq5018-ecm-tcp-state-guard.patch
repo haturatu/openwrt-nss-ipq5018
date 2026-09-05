@@ -1,0 +1,97 @@
+From 207dd1c529ba0c332c84c182a7ed5b9e47b6fea2 Mon Sep 17 00:00:00 2001
+From: haturatu <haturatu@users.noreply.github.com>
+Date: Sat, 6 Sep 2026 00:00:00 +0900
+Subject: [PATCH] ipq5018: defer NSS TCP rules with immature state
+
+Avoid submitting a TCP_VALID NSS rule when conntrack has not established
+enough TCP state. The deferred connection remains eligible for acceleration
+on subsequent slow-path packets instead of being marked as a failed rule.
+
+The tcp_state_guard module parameter selects the experiment:
+0 disables it, 1 defers all-zero state, and 2 requires ready state in both
+directions. The default is mode 1 for the initial MX2000 validation.
+
+Signed-off-by: haturatu <haturatu@users.noreply.github.com>
+---
+ qca-nss-ecm/patches/0031-ipq5018-ecm-tcp-state-guard.patch | 70 +++++++++++
+ 1 file changed, 70 insertions(+)
+ create mode 100644 qca-nss-ecm/patches/0031-ipq5018-ecm-tcp-state-guard.patch
+
+diff --git a/qca-nss-ecm/patches/0031-ipq5018-ecm-tcp-state-guard.patch b/qca-nss-ecm/patches/0031-ipq5018-ecm-tcp-state-guard.patch
+new file mode 100644
+index 0000000..9e792aa
+--- /dev/null
++++ b/qca-nss-ecm/patches/0031-ipq5018-ecm-tcp-state-guard.patch
+@@ -0,0 +1,70 @@
++diff --git a/frontends/nss/ecm_nss_ported_ipv4.c b/frontends/nss/ecm_nss_ported_ipv4.c
++index 14525eb..7c5a468 100644
++--- a/frontends/nss/ecm_nss_ported_ipv4.c
+++++ b/frontends/nss/ecm_nss_ported_ipv4.c
++@@ -100,6 +100,14 @@
++ static int ecm_nss_ported_ipv4_accelerated_count[ECM_FRONT_END_PORTED_PROTO_MAX] = {0};
++ 						/* Array of Number of TCP and UDP connections currently offloaded */
++ 
+++/*
+++ * TCP state guard modes:
+++ * 0: disabled, 1: defer all-zero state, 2: require both directions.
+++ */
+++static unsigned int ecm_nss_ported_ipv4_tcp_state_guard = 1;
+++module_param_named(tcp_state_guard, ecm_nss_ported_ipv4_tcp_state_guard, uint, 0644);
+++MODULE_PARM_DESC(tcp_state_guard, "Defer IPv4 TCP NSS acceleration until TCP state is ready (0=off, 1=nonzero, 2=both directions)");
+++
++ #if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 13, 0))
++ /*
++  * Expose what should be a static flag in the TCP connection tracker.
++@@ -343,6 +351,9 @@ static void ecm_nss_ported_ipv4_connection_accelerate(struct ecm_front_end_conne
++ 	int32_t list_index;
++ 	int32_t interface_type_counts[ECM_DB_IFACE_TYPE_COUNT];
++ 	bool rule_invalid;
+++	bool flow_state_valid;
+++	bool return_state_valid;
+++	bool tcp_state_defer;
++ 	uint8_t dest_mac_xlate[ETH_ALEN];
++ 	ecm_db_direction_t ecm_dir;
++ 	ecm_front_end_acceleration_mode_t result_mode;
++@@ -1275,6 +1286,22 @@ static void ecm_nss_ported_ipv4_connection_accelerate(struct ecm_front_end_conne
++ 			spin_unlock_bh(&ct->lock);
++ 		}
++ 
+++		flow_state_valid = tcp_ct.flow_max_window || tcp_ct.flow_end || tcp_ct.flow_max_end;
+++		return_state_valid = tcp_ct.return_max_window || tcp_ct.return_end || tcp_ct.return_max_end;
+++		tcp_state_defer = tcp_ct.valid &&
+++			((ecm_nss_ported_ipv4_tcp_state_guard == 1 && !flow_state_valid && !return_state_valid) ||
+++			(ecm_nss_ported_ipv4_tcp_state_guard >= 2 && (!flow_state_valid || !return_state_valid)));
+++		if (tcp_state_defer) {
+++			pr_info("ECM-TCP-DEFER: serial=%u mode=%u flow_ready=%u return_ready=%u flow_ws=%u flow_maxwin=%u flow_end=%u flow_maxend=%u ret_ws=%u ret_maxwin=%u ret_end=%u ret_maxend=%u\n",
+++				ecm_db_connection_serial_get(feci->ci), ecm_nss_ported_ipv4_tcp_state_guard,
+++				flow_state_valid, return_state_valid,
+++				tcp_ct.flow_window_scale, tcp_ct.flow_max_window,
+++				tcp_ct.flow_end, tcp_ct.flow_max_end,
+++				tcp_ct.return_window_scale, tcp_ct.return_max_window,
+++				tcp_ct.return_end, tcp_ct.return_max_end);
+++			goto ported_accel_defer;
+++		}
+++
++ 		nircm->valid_flags |= NSS_IPV4_RULE_CREATE_TCP_VALID;
++ 	}
++ 
++@@ -1519,6 +1546,17 @@ ported_accel_bad_rule:
++ 	 */
++ 	DEBUG_WARN("%px: Accel failed - bad rule\n", feci);
++ 	ecm_nss_ipv4_accel_pending_clear(feci, ECM_FRONT_END_ACCELERATION_MODE_FAIL_RULE);
+++	return;
+++
+++ported_accel_defer:
+++	/*
+++	 * TCP conntrack state can mature on subsequent slow-path packets. Clear
+++	 * the pending state without marking this connection as a failed rule.
+++	 */
+++	ecm_db_connection_interfaces_deref(from_ifaces, from_ifaces_first);
+++	ecm_db_connection_interfaces_deref(to_ifaces, to_ifaces_first);
+++	kfree(nim);
+++	ecm_nss_ipv4_accel_pending_clear(feci, ECM_FRONT_END_ACCELERATION_MODE_DECEL);
++ }
++ 
++ /*
+-- 
+2.50.1
