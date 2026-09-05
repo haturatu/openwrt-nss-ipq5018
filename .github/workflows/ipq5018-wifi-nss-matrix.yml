@@ -1,6 +1,22 @@
 name: Build IPQ5018 Wi-Fi NSS profile matrix
 
 on:
+  push:
+    branches:
+      - feat/nss-ipq5018-autoload-wifi
+    paths:
+      - '.github/workflows/ipq5018-wifi-nss-matrix.yml'
+      - '.github/workflows/ipq5018.yml'
+      - 'feeds.conf.default'
+      - 'nss-setup/**'
+      - 'package/**'
+      - 'target/**'
+      - 'include/**'
+      - 'toolchain/**'
+      - 'tools/**'
+      - 'rules.mk'
+      - 'Makefile'
+      - 'scripts/**'
   workflow_dispatch:
 
 permissions:
