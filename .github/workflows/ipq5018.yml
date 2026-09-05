@@ -17,8 +17,7 @@ on:
       - 'scripts/**'
   push:
     branches:
-      - feat/nss-ipq5018
-      - feat/nss-ipq5018-autoload-wifi
+      - 'feat/**'
       - 25.12-nss
     paths:
       - '.github/workflows/ipq5018.yml'
