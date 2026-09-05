@@ -101,8 +101,8 @@ if [ "$wifi_nss" -eq 1 ]; then
 		esac
 	done
 
-	if [ -r /etc/config/pbuf ] && grep -Eq "option memory_profile[[:space:]]+'(auto|512|512mb)'" /etc/config/pbuf; then
-		info 'ath11k NSS pbuf uses an IPQ5018-compatible memory profile'
+	if [ -r /etc/config/pbuf ] && grep -Eq "option memory_profile[[:space:]]+'(auto|256|256mb|512|512mb)'" /etc/config/pbuf; then
+		info "ath11k NSS pbuf profile=$(uci -q get pbuf.opt.memory_profile 2>/dev/null || printf unknown)"
 	else
 		warn 'pbuf memory_profile is not explicitly auto/512; inspect /etc/config/pbuf'
 	fi
