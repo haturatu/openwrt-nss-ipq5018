@@ -345,12 +345,16 @@ jobs:
           grep -Fq 'memory@40000000' "$RUNNER_TEMP/mx2000.dts"
           grep -Fq '0x39d00000' "$RUNNER_TEMP/mx2000.dts"
           if [ "$IPQ5018_WIFI_NSS" = true ]; then
-            fw_mode2_count=$(grep -Ec 'qcom,ath11k-fw-memory-mode = <0x2>;' "$RUNNER_TEMP/mx2000.dts")
+            # NOTE: dtc zero-pads small cells (<0x02>, <0x01>); the 0*
+            # keeps this robust across dtc versions. The || true guards
+            # are required: grep -c exits 1 on zero matches, and under
+            # bash -e that would kill the step before our ERROR prints.
+            fw_mode2_count=$(grep -Ec 'qcom,ath11k-fw-memory-mode = <0x0*2>;' "$RUNNER_TEMP/mx2000.dts" || true)
             [ "$fw_mode2_count" -ge 2 ] || {
               echo "ERROR: fw-memory-mode=2 present on ${fw_mode2_count} node(s), expected >= 2 (both radios)" >&2
               exit 1
             }
-            nss_prio_count=$(grep -Ec 'nss-radio-priority = <0x1>;' "$RUNNER_TEMP/mx2000.dts")
+            nss_prio_count=$(grep -Ec 'nss-radio-priority = <0x0*1>;' "$RUNNER_TEMP/mx2000.dts" || true)
             [ "$nss_prio_count" -ge 1 ] || {
               echo 'ERROR: nss-radio-priority missing from Wi-Fi NSS DTB' >&2
               exit 1

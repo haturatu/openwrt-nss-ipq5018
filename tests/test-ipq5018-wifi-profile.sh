@@ -59,6 +59,14 @@ run_profile_test() {
 		fail 'MX2000 Wi-Fi NSS overlay (fw-memory-mode=2) was not enabled'
 	[ "$(grep -Fc '#include "ipq5018-mx2000-nss-wifi.dtsi"' "$dts")" -eq 1 ] || \
 		fail 'MX2000 Wi-Fi NSS overlay was duplicated'
+	# DTS uses last-wins for duplicate properties and the base MX2000
+	# body sets fw-memory-mode = <1> after the header includes, so the
+	# overlay include must come after the base body or mode 2 silently
+	# loses (the built DTB would still report mode 1).
+	last_mode_line=$(grep -n 'qcom,ath11k-fw-memory-mode' "$dts" | tail -n 1 | cut -d: -f1)
+	overlay_line=$(grep -nF '#include "ipq5018-mx2000-nss-wifi.dtsi"' "$dts" | cut -d: -f1)
+	[ "$overlay_line" -gt "$last_mode_line" ] || \
+		fail 'MX2000 Wi-Fi NSS overlay must be included after the base DTS body (last-wins)'
 }
 
 run_profile_test 256

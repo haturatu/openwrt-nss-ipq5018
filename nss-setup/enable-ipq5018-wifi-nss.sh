@@ -162,8 +162,12 @@ if ! grep -Fqx '#include "ipq5018-nss-qcn6122.dtsi"' "$dts_file"; then
 	sed -i '/^#include "ipq5018-nss.dtsi"$/a #include "ipq5018-nss-qcn6122.dtsi"' "$dts_file"
 fi
 
+# NOTE: this overlay is appended at the end of the file on purpose. DTS
+# uses last-wins for duplicate properties, and the base MX2000 body sets
+# qcom,ath11k-fw-memory-mode = <1> after the header includes, so an
+# include placed next to the other NSS headers would silently lose.
 if ! grep -Fqx '#include "ipq5018-mx2000-nss-wifi.dtsi"' "$dts_file"; then
-	sed -i '/^#include "ipq5018-nss-qcn6122.dtsi"$/a #include "ipq5018-mx2000-nss-wifi.dtsi"' "$dts_file"
+	printf '#include "ipq5018-mx2000-nss-wifi.dtsi"\n' >> "$dts_file"
 fi
 
 info 'enabled experimental ath11k NSS support'
