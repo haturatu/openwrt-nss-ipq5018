@@ -1,0 +1,36 @@
+--- a/drivers/net/wireless/ath/ath11k/nss.c
++++ b/drivers/net/wireless/ath/ath11k/nss.c
+@@ -4409,6 +4409,17 @@ free:
+ }
+ #endif
+
++static void ath11k_nss_release_external_if(struct ath11k_base *ab)
++{
++	/* The EXTERNAL_INTERFACE0/1 pool has only two entries. Without
++	 * releasing the interface on teardown, repeated wifi restarts or
++	 * userPD recovery exhaust the pool and the next init fails.
++	 */
++	if (ab->nss.if_num == NSS_WIFILI_EXTERNAL_INTERFACE0 ||
++	    ab->nss.if_num == NSS_WIFILI_EXTERNAL_INTERFACE1)
++		nss_wifili_release_external_if(ab->nss.if_num);
++}
++
+ static int ath11k_nss_init(struct ath11k_base *ab)
+ {
+ 	struct nss_wifili_init_msg *wim = NULL;
+@@ -4562,6 +4573,7 @@ static int ath11k_nss_init(struct ath11k
+
+ unregister:
+ 	nss_unregister_wifili_if(ab->nss.if_num);
++	ath11k_nss_release_external_if(ab);
+ free:
+ 	ath11k_nss_tx_desc_mem_free(ab);
+ 	kfree(wlmsg);
+@@ -4864,6 +4876,7 @@ static void ath11k_nss_reset(struct ath1
+
+ 	/* Unregister wifili interface */
+ 	nss_unregister_wifili_if(ab->nss.if_num);
++	ath11k_nss_release_external_if(ab);
+
+ free:
+ 	kfree(wlmsg);

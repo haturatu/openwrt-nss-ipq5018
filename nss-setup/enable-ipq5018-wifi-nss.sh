@@ -1,6 +1,18 @@
 #!/bin/sh
 set -eu
 
+# Experimental Wi-Fi NSS opt-in for IPQ5018 (Linksys MX2000).
+#
+# The MX2000 has 512 MB of physical RAM, so the safe host-side default is
+# the 512M ath11k profile with pbuf '512mb'. The 1024 (1G) profile exists
+# only as an experimental comparison option: it must be requested
+# explicitly via --mem-profile 1024 and is never enabled by default.
+#
+# qcom,ath11k-fw-memory-mode is a WLAN firmware memory layout selector and
+# is independent from the ATH11K_MEM_PROFILE_* host-side profile. The
+# experimental image overrides it to <2> via the MX2000-specific overlay
+# ipq5018-mx2000-nss-wifi.dtsi (the base DTS keeps mode 1).
+
 mem_profile=512
 config_file=.config
 dts_file=target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-mx2000.dts
@@ -22,7 +34,7 @@ while [ "$#" -gt 0 ]; do
 		;;
 	--mem-profile)
 		[ "$#" -ge 2 ] || {
-			error '--mem-profile requires 256 or 512'
+			error '--mem-profile requires 256, 512 or 1024'
 			exit 2
 		}
 		mem_profile=$2
@@ -66,12 +78,23 @@ while [ "$#" -gt 0 ]; do
 done
 
 case "$mem_profile" in
-256|512)
-		;;
+256)
+	config_profile=CONFIG_ATH11K_MEM_PROFILE_256M
+	pbuf_profile=256mb
+	;;
+512)
+	config_profile=CONFIG_ATH11K_MEM_PROFILE_512M
+	pbuf_profile=512mb
+	;;
+1024|1g|1G)
+	mem_profile=1024
+	config_profile=CONFIG_ATH11K_MEM_PROFILE_1G
+	pbuf_profile=1gb
+	;;
 *)
-		error "unsupported memory profile: $mem_profile (use 256 or 512)"
-		exit 2
-		;;
+	error "unsupported memory profile: $mem_profile (use 256, 512 or 1024)"
+	exit 2
+	;;
 esac
 
 [ -f "$config_file" ] || {
@@ -119,22 +142,19 @@ set_config CONFIG_ATH11K_NSS_SUPPORT y
 set_config CONFIG_NSS_DRV_WIFIOFFLOAD_ENABLE y
 set_config CONFIG_NSS_DRV_WIFI_EXT_VDEV_ENABLE y
 set_config CONFIG_PACKAGE_MAC80211_NSS_SUPPORT y
-set_config "CONFIG_ATH11K_MEM_PROFILE_${mem_profile}M" y
+unset_config CONFIG_ATH11K_MEM_PROFILE_256M
+unset_config CONFIG_ATH11K_MEM_PROFILE_512M
 unset_config CONFIG_ATH11K_MEM_PROFILE_1G
-if [ "$mem_profile" = 512 ]; then
-	unset_config CONFIG_ATH11K_MEM_PROFILE_256M
-else
-	unset_config CONFIG_ATH11K_MEM_PROFILE_512M
-fi
+set_config "$config_profile" y
 unset_config CONFIG_ATH11K_NSS_MESH_SUPPORT
 unset_config CONFIG_PACKAGE_MAC80211_NSS_REDIRECT
 
 sed -i -E \
-	"s/^([[:space:]]*option[[:space:]]+memory_profile[[:space:]]+).*/\\1'${mem_profile}mb'/" \
+	"s/^([[:space:]]*option[[:space:]]+memory_profile[[:space:]]+).*/\\1'${pbuf_profile}'/" \
 	"$pbuf_file"
 
-grep -Eq "^[[:space:]]*option[[:space:]]+memory_profile[[:space:]]+'${mem_profile}mb'[[:space:]]*$" "$pbuf_file" || {
-	error "unable to set pbuf memory profile: $mem_profile"
+grep -Eq "^[[:space:]]*option[[:space:]]+memory_profile[[:space:]]+'${pbuf_profile}'[[:space:]]*$" "$pbuf_file" || {
+	error "unable to set pbuf memory profile: $pbuf_profile"
 	exit 1
 }
 
@@ -142,8 +162,16 @@ if ! grep -Fqx '#include "ipq5018-nss-qcn6122.dtsi"' "$dts_file"; then
 	sed -i '/^#include "ipq5018-nss.dtsi"$/a #include "ipq5018-nss-qcn6122.dtsi"' "$dts_file"
 fi
 
+if ! grep -Fqx '#include "ipq5018-mx2000-nss-wifi.dtsi"' "$dts_file"; then
+	sed -i '/^#include "ipq5018-nss-qcn6122.dtsi"$/a #include "ipq5018-mx2000-nss-wifi.dtsi"' "$dts_file"
+fi
+
 info 'enabled experimental ath11k NSS support'
 info 'ath11k parameters will load as nss_offload=1 frame_mode=2'
-info "ath11k memory profile=${mem_profile}M; pbuf memory_profile=${mem_profile}mb"
+info "ath11k memory profile=${config_profile}; pbuf memory_profile=${pbuf_profile}"
+if [ "$mem_profile" = 1024 ]; then
+	info 'WARNING: 1G profile is experimental on the 512MB MX2000; prefer 512M'
+fi
 info 'QCN6122 NSS radio-priority overlay enabled after ipq5018-nss.dtsi'
+info 'MX2000 Wi-Fi NSS overlay (fw-memory-mode=2) enabled'
 info 'ECM remains disabled by the base seed'

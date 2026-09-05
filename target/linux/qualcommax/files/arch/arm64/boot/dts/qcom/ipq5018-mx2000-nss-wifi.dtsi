@@ -1,0 +1,24 @@
+// SPDX-License-Identifier: GPL-2.0-only
+//
+// Linksys MX2000 experimental Wi-Fi NSS overlay.
+//
+// The base ipq5018-mx2000.dts uses qcom,ath11k-fw-memory-mode = <1> for
+// both radios. The Wi-Fi NSS datapath was observed to work with firmware
+// memory mode 2 on this board, so the experimental image overrides it
+// here instead of editing the base DTS.
+//
+// NOTE: qcom,ath11k-fw-memory-mode is a WLAN firmware memory layout
+// selector, not the physical RAM size. It is independent from the
+// CONFIG_ATH11K_MEM_PROFILE_* host-side profile. The MX2000 has 512 MB
+// of physical RAM, so the safe host-side default stays 512M.
+
+&wifi {
+	// IPQ5018 internal 2.4 GHz radio
+	qcom,ath11k-fw-memory-mode = <2>;
+};
+
+&wifi1 {
+	// QCN6122 5 GHz radio
+	qcom,ath11k-fw-memory-mode = <2>;
+	nss-radio-priority = <1>;
+};

@@ -31,6 +31,9 @@ jobs:
         mem_profile:
           - '256'
           - '512'
+          # 1024 selects the experimental 1G profile on the 512MB MX2000;
+          # the safe default remains 512.
+          - '1024'
     uses: ./.github/workflows/ipq5018.yml
     with:
       wifi_nss: true

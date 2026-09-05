@@ -48,6 +48,7 @@ on:
         options:
           - '256'
           - '512'
+          - '1024'
 
   workflow_call:
     inputs:
@@ -154,13 +155,26 @@ jobs:
             grep -Eq '^CONFIG_NSS_DRV_WIFIOFFLOAD_ENABLE=y$' .config
             grep -Eq '^CONFIG_NSS_DRV_WIFI_EXT_VDEV_ENABLE=y$' .config
             grep -Eq '^CONFIG_PACKAGE_MAC80211_NSS_SUPPORT=y$' .config
-            grep -Eq "^CONFIG_ATH11K_MEM_PROFILE_${wifi_nss_mem_profile}M=y$" .config
-            if [ "$wifi_nss_mem_profile" = 512 ]; then
-              grep -Eq '^# CONFIG_ATH11K_MEM_PROFILE_256M is not set$' .config
-            else
-              grep -Eq '^# CONFIG_ATH11K_MEM_PROFILE_512M is not set$' .config
-            fi
-            grep -Eq "^[[:space:]]*option[[:space:]]+memory_profile[[:space:]]+'${wifi_nss_mem_profile}mb'[[:space:]]*$" package/kernel/mac80211/files/pbuf.uci
+            case "$wifi_nss_mem_profile" in
+            1024)
+              # Experimental 1G profile on the 512MB MX2000.
+              wifi_nss_kconfig=CONFIG_ATH11K_MEM_PROFILE_1G
+              wifi_nss_pbuf=1gb
+              ;;
+            *)
+              wifi_nss_kconfig="CONFIG_ATH11K_MEM_PROFILE_${wifi_nss_mem_profile}M"
+              wifi_nss_pbuf="${wifi_nss_mem_profile}mb"
+              ;;
+            esac
+            grep -Eq "^${wifi_nss_kconfig}=y$" .config
+            for other_profile in CONFIG_ATH11K_MEM_PROFILE_256M \
+              CONFIG_ATH11K_MEM_PROFILE_512M \
+              CONFIG_ATH11K_MEM_PROFILE_1G; do
+              if [ "$other_profile" != "$wifi_nss_kconfig" ]; then
+                grep -Eq "^# ${other_profile} is not set$" .config
+              fi
+            done
+            grep -Eq "^[[:space:]]*option[[:space:]]+memory_profile[[:space:]]+'${wifi_nss_pbuf}'[[:space:]]*$" package/kernel/mac80211/files/pbuf.uci
             if grep -Eq '^CONFIG_ATH11K_NSS_MESH_SUPPORT=y$' .config; then
               echo 'ERROR: ath11k NSS mesh support must remain disabled for the experiment' >&2
               exit 1
@@ -276,12 +290,29 @@ jobs:
           grep -Fq 'skip unmapped MP PHY notification' package/kernel/qca-ssdk/patches/132-mp-ignore-unmapped-phy-notifications.patch
           grep -Fq 'NSS WIFILI target resolve:' package/kernel/mac80211/patches/nss/ath11k/999-908-ath11k-trace-ipq5018-wifili-interface-allocation.patch
           grep -Fq 'NSS WIFILI resolve:' package/kernel/mac80211/patches/nss/ath11k/999-908-ath11k-trace-ipq5018-wifili-interface-allocation.patch
+          grep -Fq 'ath11k_ahb_get_window_offset_qcn6122' \
+            package/kernel/mac80211/patches/nss/ath11k/999-909-ath11k-nss-fix-qcn6122-hybrid-bus-addressing.patch
+          grep -Fq 'ab->mem_pa = resp.bar_addr' \
+            package/kernel/mac80211/patches/nss/ath11k/999-909-ath11k-nss-fix-qcn6122-hybrid-bus-addressing.patch
+          grep -Fq 'nss_wifili_release_external_if' \
+            package/kernel/mac80211/patches/nss/ath11k/999-910-ath11k-nss-release-external-wifili-interface.patch
+          grep -Fq 'qcom,ath11k-fw-memory-mode = <2>;' \
+            target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-mx2000-nss-wifi.dtsi
           if [ "$IPQ5018_WIFI_NSS" = true ]; then
             grep -Fx '#include "ipq5018-nss-qcn6122.dtsi"' target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-mx2000.dts
-            grep -Eq "^[[:space:]]*option[[:space:]]+memory_profile[[:space:]]+'${IPQ5018_WIFI_NSS_MEM_PROFILE}mb'[[:space:]]*$" package/kernel/mac80211/files/pbuf.uci
+            grep -Fx '#include "ipq5018-mx2000-nss-wifi.dtsi"' target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-mx2000.dts
+            case "$IPQ5018_WIFI_NSS_MEM_PROFILE" in
+            1024) IPQ5018_WIFI_NSS_PBUF=1gb ;;
+            *) IPQ5018_WIFI_NSS_PBUF="${IPQ5018_WIFI_NSS_MEM_PROFILE}mb" ;;
+            esac
+            grep -Eq "^[[:space:]]*option[[:space:]]+memory_profile[[:space:]]+'${IPQ5018_WIFI_NSS_PBUF}'[[:space:]]*$" package/kernel/mac80211/files/pbuf.uci
           else
             if grep -Fx '#include "ipq5018-nss-qcn6122.dtsi"' target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-mx2000.dts; then
               echo 'ERROR: QCN6122 NSS overlay must not be enabled in the production image' >&2
+              exit 1
+            fi
+            if grep -Fx '#include "ipq5018-mx2000-nss-wifi.dtsi"' target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-mx2000.dts; then
+              echo 'ERROR: MX2000 Wi-Fi NSS overlay must not be enabled in the production image' >&2
               exit 1
             fi
           fi
@@ -336,7 +367,11 @@ jobs:
             test -f "$rootfs_dir/etc/modules.d/ath11k"
             grep -Eq 'nss_offload=1([[:space:]]|$)' "$rootfs_dir/etc/modules.d/ath11k"
             grep -Eq 'frame_mode=2([[:space:]]|$)' "$rootfs_dir/etc/modules.d/ath11k"
-            grep -Eq "^[[:space:]]*option[[:space:]]+memory_profile[[:space:]]+'${IPQ5018_WIFI_NSS_MEM_PROFILE}mb'[[:space:]]*$" "$rootfs_dir/etc/config/pbuf"
+            case "$IPQ5018_WIFI_NSS_MEM_PROFILE" in
+            1024) IPQ5018_WIFI_NSS_PBUF=1gb ;;
+            *) IPQ5018_WIFI_NSS_PBUF="${IPQ5018_WIFI_NSS_MEM_PROFILE}mb" ;;
+            esac
+            grep -Eq "^[[:space:]]*option[[:space:]]+memory_profile[[:space:]]+'${IPQ5018_WIFI_NSS_PBUF}'[[:space:]]*$" "$rootfs_dir/etc/config/pbuf"
           else
             if [ -f "$rootfs_dir/etc/modules.d/ath11k" ]; then
               if grep -Eq 'nss_offload=1|frame_mode=2' "$rootfs_dir/etc/modules.d/ath11k"; then

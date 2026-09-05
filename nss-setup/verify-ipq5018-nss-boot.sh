@@ -101,13 +101,31 @@ if [ "$wifi_nss" -eq 1 ]; then
 		esac
 	done
 
-	if [ -r /etc/config/pbuf ] && grep -Eq "option memory_profile[[:space:]]+'(auto|256|256mb|512|512mb)'" /etc/config/pbuf; then
+	if [ -r /etc/config/pbuf ] && grep -Eq "option memory_profile[[:space:]]+'(auto|256|256mb|512|512mb|1gb)'" /etc/config/pbuf; then
 		info "ath11k NSS pbuf profile=$(uci -q get pbuf.opt.memory_profile 2>/dev/null || printf unknown)"
 	else
-		warn 'pbuf memory_profile is not explicitly auto/512; inspect /etc/config/pbuf'
+		warn 'pbuf memory_profile is not explicitly auto/512/1gb; inspect /etc/config/pbuf'
 	fi
 
 	check_dmesg 'ath11k .*NSS|WIFILI|nss_offload' 'ath11k NSS activity observed'
+	check_dmesg 'FW memory mode:' 'ath11k firmware memory mode reported'
+	check_dmesg 'hybrid bus BAR 0x[1-9a-f]|hybrid bus BAR 0x0*[1-9a-f]' \
+		'QCN6122 hybrid bus BAR remapped to a non-zero address'
+	if dmesg 2>/dev/null | grep -Eq 'hybrid bus BAR 0x0+ size'; then
+		error 'QCN6122 hybrid bus BAR is zero; BAR/window fix is missing or ineffective'
+	fi
+
+	# Datapath success needs traffic: nss_offload=1 alone is not proof.
+	# After associating a client, reo_reaped and rx_deliverd must grow.
+	if command -v nss_stats >/dev/null 2>&1; then
+		if nss_stats 2>/dev/null | grep -Ei 'reo_reaped|rx_deliverd' | grep -Eqv '[[:space:]]0([[:space:]]|$)'; then
+			info 'NSS wifili datapath counters are incrementing (reo_reaped/rx_deliverd)'
+		else
+			warn 'no non-zero reo_reaped/rx_deliverd counters; associate a client and generate traffic, then re-run with --wifi'
+		fi
+	else
+		warn 'nss_stats not found; verify reo_reaped/rx_deliverd manually after client traffic'
+	fi
 fi
 
 if [ "$errors" -ne 0 ]; then

@@ -1,0 +1,44 @@
+--- a/drivers/net/wireless/ath/ath11k/ahb.c
++++ b/drivers/net/wireless/ath/ath11k/ahb.c
+@@ -794,6 +794,18 @@ static void ath11k_ahb_config_static_win
+ 		  ab->mem + ATH11K_PCI_WINDOW_REG_ADDRESS);
+ }
+
++static u32 ath11k_ahb_get_window_offset_qcn6122(struct ath11k_base *ab,
++						 u32 offset)
++{
++	u32 window_start = ath11k_ahb_get_window_start_wcn6750(ab, offset);
++
++	if (window_start)
++		offset = window_start +
++			 (offset & ATH11K_PCI_WINDOW_RANGE_MASK);
++
++	return offset;
++}
++
+ static const struct ath11k_hif_ops ath11k_ahb_hif_ops_ipq8074 = {
+ 	.start = ath11k_ahb_start,
+ 	.stop = ath11k_ahb_stop,
+@@ -830,6 +842,7 @@ static const struct ath11k_hif_ops ath11
+ 	.ce_irq_enable = ath11k_pci_enable_ce_irqs_except_wake_irq,
+ 	.ce_irq_disable = ath11k_pci_disable_ce_irqs_except_wake_irq,
+ 	.config_static_window = ath11k_ahb_config_static_window_qcn6122,
++	.get_window_offset = ath11k_ahb_get_window_offset_qcn6122,
+ };
+
+ static int ath11k_core_get_rproc(struct ath11k_base *ab)
+--- a/drivers/net/wireless/ath/ath11k/qmi.c
++++ b/drivers/net/wireless/ath/ath11k/qmi.c
+@@ -2203,6 +2203,12 @@ static int ath11k_qmi_request_device_inf
+ 	ab->mem = bar_addr_va;
+ 	ab->mem_len = resp.bar_size;
+
++	ab->mem_pa = resp.bar_addr;
++
++	ath11k_info(ab, "hybrid bus BAR 0x%llx size 0x%x\n",
++		    (unsigned long long)resp.bar_addr,
++		    resp.bar_size);
++
+ 	if (!ab->hw_params.ce_remap)
+ 		ab->mem_ce = ab->mem;
+

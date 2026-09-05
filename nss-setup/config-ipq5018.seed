@@ -23,7 +23,8 @@ CONFIG_PACKAGE_nss-firmware-ipq50xx=y
 # CONFIG_NSS_DRV_MANUAL_BRINGUP is not set
 
 # Wired IPQ5018 NSS uses the medium (512 MiB) profile. The Wi-Fi NSS helper
-# selects a matching ath11k/pbuf profile for its 256M or 512M experiment.
+# keeps the matching 512M ath11k/pbuf profile by default; 1024 (1G) is an
+# experimental comparison option only for the 512MB MX2000.
 CONFIG_NSS_MEM_PROFILE_MEDIUM=y
 
 # Start with the firmware used by the existing NSS integration.
