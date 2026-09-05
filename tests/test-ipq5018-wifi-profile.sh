@@ -28,6 +28,7 @@ run_profile_test() {
 	dts="$test_dir/dts-$profile"
 	pbuf="$test_dir/pbuf-$profile"
 
+	# shellcheck disable=SC2046: intentional word splitting of "CONFIG PBUF" pair
 	set -- $(expected_for "$profile")
 	want_config=$1
 	want_pbuf=$2
@@ -64,12 +65,12 @@ run_profile_test 256
 run_profile_test 512
 run_profile_test 1024
 
-# The MX2000-specific overlay must select firmware memory mode 2 for both
-# radios. This is a WLAN firmware layout selector, independent from the
-# host-side ATH11K_MEM_PROFILE_* choice.
-grep -Fq 'qcom,ath11k-fw-memory-mode = <2>;' \
-	target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-mx2000-nss-wifi.dtsi || \
-	fail 'MX2000 Wi-Fi NSS overlay does not set fw-memory-mode 2'
+# The MX2000-specific overlay must select firmware memory mode 2 on both
+# radios (not just one). This is a WLAN firmware layout selector,
+# independent from the host-side ATH11K_MEM_PROFILE_* choice.
+[ "$(grep -Fc 'qcom,ath11k-fw-memory-mode = <2>;' \
+	target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-mx2000-nss-wifi.dtsi)" -eq 2 ] || \
+	fail 'MX2000 Wi-Fi NSS overlay must set fw-memory-mode 2 on both radios'
 
 config="$test_dir/config-invalid"
 dts="$test_dir/dts-invalid"

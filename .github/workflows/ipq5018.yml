@@ -344,6 +344,18 @@ jobs:
           grep -Fq 'nss@40000000' "$RUNNER_TEMP/mx2000.dts"
           grep -Fq 'memory@40000000' "$RUNNER_TEMP/mx2000.dts"
           grep -Fq '0x39d00000' "$RUNNER_TEMP/mx2000.dts"
+          if [ "$IPQ5018_WIFI_NSS" = true ]; then
+            fw_mode2_count=$(grep -Ec 'qcom,ath11k-fw-memory-mode = <0x2>;' "$RUNNER_TEMP/mx2000.dts")
+            [ "$fw_mode2_count" -ge 2 ] || {
+              echo "ERROR: fw-memory-mode=2 present on ${fw_mode2_count} node(s), expected >= 2 (both radios)" >&2
+              exit 1
+            }
+            nss_prio_count=$(grep -Ec 'nss-radio-priority = <0x1>;' "$RUNNER_TEMP/mx2000.dts")
+            [ "$nss_prio_count" -ge 1 ] || {
+              echo 'ERROR: nss-radio-priority missing from Wi-Fi NSS DTB' >&2
+              exit 1
+            }
+          fi
           manifest=$(find bin/targets/qualcommax/ipq50xx -maxdepth 1 -name '*.manifest' -print -quit)
           test -n "$manifest"
           grep -Eq '^kmod-qca-nss-dp([[:space:]]|$)' "$manifest"

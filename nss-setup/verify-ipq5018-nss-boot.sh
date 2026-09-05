@@ -108,23 +108,69 @@ if [ "$wifi_nss" -eq 1 ]; then
 	fi
 
 	check_dmesg 'ath11k .*NSS|WIFILI|nss_offload' 'ath11k NSS activity observed'
-	check_dmesg 'FW memory mode:' 'ath11k firmware memory mode reported'
-	check_dmesg 'hybrid bus BAR 0x[1-9a-f]|hybrid bus BAR 0x0*[1-9a-f]' \
-		'QCN6122 hybrid bus BAR remapped to a non-zero address'
-	if dmesg 2>/dev/null | grep -Eq 'hybrid bus BAR 0x0+ size'; then
-		error 'QCN6122 hybrid bus BAR is zero; BAR/window fix is missing or ineffective'
+
+	# The experimental overlay selects firmware memory mode 2 on both
+	# radios (internal 2.4 GHz + QCN6122 5 GHz). One line is not enough:
+	# both radios must report mode 2, otherwise only half of the
+	# experiment is active.
+	fw_mode2_count=$(dmesg 2>/dev/null | grep -Ec 'FW memory mode: 2' || true)
+	if [ "$fw_mode2_count" -ge 2 ]; then
+		info "ath11k firmware memory mode 2 reported by ${fw_mode2_count} radios"
+	else
+		error "only ${fw_mode2_count} radio(s) report FW memory mode 2; expected 2 (both radios)"
 	fi
 
-	# Datapath success needs traffic: nss_offload=1 alone is not proof.
-	# After associating a client, reo_reaped and rx_deliverd must grow.
-	if command -v nss_stats >/dev/null 2>&1; then
-		if nss_stats 2>/dev/null | grep -Ei 'reo_reaped|rx_deliverd' | grep -Eqv '[[:space:]]0([[:space:]]|$)'; then
-			info 'NSS wifili datapath counters are incrementing (reo_reaped/rx_deliverd)'
+	# The QCN6122 hybrid BAR must be remapped to a non-zero address with
+	# a non-zero size. A zero address makes the NSS datapath use a bare
+	# offset into the wrong fabric window; a zero size breaks the remap.
+	if dmesg 2>/dev/null | grep -Eq 'hybrid bus BAR 0x0*[1-9a-f][0-9a-f]* size 0x0*[1-9a-f]'; then
+		info 'QCN6122 hybrid bus BAR remapped (non-zero address and size)'
+	elif dmesg 2>/dev/null | grep -Eq 'hybrid bus BAR 0x'; then
+		error 'QCN6122 hybrid bus BAR address or size is zero; BAR/window fix is missing or ineffective'
+	else
+		error 'missing boot log: QCN6122 hybrid bus BAR remap'
+	fi
+
+	# Datapath success must be proven on the QCN6122 5 GHz radio itself:
+	# an internal-radio-only offload must NOT pass. Read the wifili
+	# debugfs counters directly (nss_stats hides zero counters via the
+	# non_zero_stats filter) and require both reo_reaped and rx_deliverd
+	# to be non-zero inside the QCN6122 SoC section.
+	wifili_stats_file=/sys/kernel/debug/qca-nss-drv/stats/wifili
+	if [ -r "$wifili_stats_file" ]; then
+		qcn_stats=$(awk '/QCN6122/ { in_qcn = 1; next }
+			in_qcn && /<</ && !/PDEV/ { exit }
+			in_qcn { print }' "$wifili_stats_file")
+		qcn_reo=$(printf '%s\n' "$qcn_stats" | awk '$1 ~ /^wifili\[[0-9]+\]_reo_reaped$/ { s += $3 } END { print s + 0 }')
+		qcn_rxd=$(printf '%s\n' "$qcn_stats" | awk '$1 ~ /^wifili\[[0-9]+\]_rx_deliverd$/ { s += $3 } END { print s + 0 }')
+		if [ "$qcn_reo" -gt 0 ] && [ "$qcn_rxd" -gt 0 ]; then
+			info "QCN6122 NSS datapath alive (reo_reaped=${qcn_reo} rx_deliverd=${qcn_rxd})"
 		else
-			warn 'no non-zero reo_reaped/rx_deliverd counters; associate a client and generate traffic, then re-run with --wifi'
+			# Idle counters are only meaningful with associated
+			# 5 GHz clients, so count stations on the QCN6122
+			# phy (identified via its device-tree compatible,
+			# not by hardcoded addresses or phy numbers).
+			qcn_sta=0
+			for phy in /sys/class/ieee80211/phy*; do
+				[ -d "$phy" ] || continue
+				tr '\0' ' ' < "$phy/device/of_node/compatible" 2>/dev/null | grep -Fq 'qcom,qcn6122-wifi' || continue
+				phy_idx=${phy##*phy}
+				for netdev in /sys/class/net/*; do
+					[ -f "$netdev/phy80211/index" ] || continue
+					if [ "$(cat "$netdev/phy80211/index" 2>/dev/null)" = "$phy_idx" ]; then
+						nsta=$(iw dev "${netdev##*/}" station dump 2>/dev/null | grep -Ec '^Station ' || true)
+						qcn_sta=$((qcn_sta + nsta))
+					fi
+				done
+			done
+			if [ "$qcn_sta" -gt 0 ]; then
+				error "QCN6122 has ${qcn_sta} associated station(s) but NSS datapath is idle (reo_reaped=${qcn_reo} rx_deliverd=${qcn_rxd})"
+			else
+				warn 'QCN6122 NSS datapath idle and no 5 GHz stations; associate a client, generate traffic, then re-run with --wifi'
+			fi
 		fi
 	else
-		warn 'nss_stats not found; verify reo_reaped/rx_deliverd manually after client traffic'
+		warn 'wifili NSS stats not readable; verify QCN6122 reo_reaped/rx_deliverd manually after client traffic'
 	fi
 fi
 

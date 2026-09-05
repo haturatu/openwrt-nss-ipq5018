@@ -28,11 +28,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # 512 is the supported default on the 512MB MX2000; 1024 is the
+        # experimental 1G A/B comparison. 256 stays covered by the local
+        # shell test only to keep full-image build time down.
         mem_profile:
-          - '256'
           - '512'
-          # 1024 selects the experimental 1G profile on the 512MB MX2000;
-          # the safe default remains 512.
           - '1024'
     uses: ./.github/workflows/ipq5018.yml
     with:
