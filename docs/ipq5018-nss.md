@@ -181,20 +181,22 @@ connection数とNSS statisticsが増え、CPU負荷が下がることを確認�
 
 Wi-Fi NSSは既定イメージへ混ぜず、明示的な実験フラグで有効化します。
 これは現在のath11k NSS patch、qca-nss-drv WIFIOFFLOAD、QCN6122 overlay、
-512 MiB memory profile、pbuf initを同時に組み込む構成です。Meshとmac80211
+選択可能な256/512 MiB memory profile、pbuf initを同時に組み込む構成です。Meshとmac80211
 `nss_redirect`は有効化しません。
 
 手動ビルドでは、まず通常seedをコピーしてからopt-inします。
 
 ```sh
 cp nss-setup/config-ipq5018.seed .config
-nss-setup/enable-ipq5018-wifi-nss.sh
+nss-setup/enable-ipq5018-wifi-nss.sh --mem-profile 512
 make defconfig
 ```
 
-GitHub Actionsではworkflow_dispatchの `wifi_nss=true` を指定すると、同じopt-in
-処理を行い、実験用firmware artifactを作成します。通常のpush buildはWi-Fi NSSを
-無効にしたままです。
+`--mem-profile 256`も指定でき、ath11kのビルドprofileと`/etc/config/pbuf`を
+同じ値へ変更します。GitHub Actionsではworkflow_dispatchの`wifi_nss=true`と
+`wifi_nss_mem_profile=256|512`を指定できます。また、`Build IPQ5018 Wi-Fi NSS
+profile matrix`を起動すると、256M/512Mを並列ビルドして比較できます。通常のpush
+buildはWi-Fi NSSを無効にしたままです。
 
 構成確認の目標値は次のとおりです。
 
@@ -202,9 +204,14 @@ GitHub Actionsではworkflow_dispatchの `wifi_nss=true` を指定すると、�
 CONFIG_ATH11K_NSS_SUPPORT=y
 CONFIG_NSS_DRV_WIFIOFFLOAD_ENABLE=y
 CONFIG_NSS_DRV_WIFI_EXT_VDEV_ENABLE=y
-CONFIG_ATH11K_MEM_PROFILE_512M=y
+CONFIG_ATH11K_MEM_PROFILE_256M=y  # または CONFIG_ATH11K_MEM_PROFILE_512M=y
+option memory_profile '256mb'       # ath11k profileと同じ値
 ath11k nss_offload=1 frame_mode=2
 ```
+
+MX2000のdual-partition sysupgradeは、U-Bootの`boot_part`切替、書き込み後の
+read-back、失敗時のNAND書き込み中止を行います。切替に失敗した場合は現在の
+partitionへ書き込まず、復旧用の既存イメージを維持します。
 
 実機では、ECMを無効にしたまま、まず2.4 GHzのLAN内通信、次にQCN6122 5 GHz、
 最後に両radioを確認します。Wi-Fi NSSはIPQ5018で未検証のため、Apple端末の
