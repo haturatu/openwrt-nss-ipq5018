@@ -128,40 +128,79 @@ linksys_bootconfig_pre_upgrade() {
 }
 
 linksys_mx_pre_upgrade() {
-	local setenv_script="/tmp/fw_env_upgrade"
+	local setenv_script="${LINKSYS_MX_SETENV_SCRIPT:-/tmp/fw_env_upgrade}"
+	local boot_part target_boot_part actual_boot_part
+
+	rm -f "$setenv_script"
 
 	CI_UBIPART="rootfs"
-	boot_part="$(fw_printenv -n boot_part)"
-	if [ -n "$UPGRADE_OPT_USE_CURR_PART" ]; then
-		if [ "$boot_part" -eq "2" ]; then
+	boot_part="$(fw_printenv -n boot_part)" || {
+		echo "failed to read boot_part"
+		return 1
+	}
+
+	case "$boot_part" in
+	1|2)
+		;;
+	*)
+		echo "invalid boot_part=$boot_part"
+		return 1
+		;;
+	esac
+
+	if [ "${UPGRADE_OPT_USE_CURR_PART:-0}" = "1" ]; then
+		if [ "$boot_part" = "2" ]; then
 			CI_KERNPART="alt_kernel"
 			CI_UBIPART="alt_rootfs"
 		fi
 	else
-		if [ "$boot_part" -eq "1" ]; then
-			echo "boot_part 2" >> $setenv_script
+		case "$boot_part" in
+		1)
+			target_boot_part=2
 			CI_KERNPART="alt_kernel"
 			CI_UBIPART="alt_rootfs"
-		else
-			echo "boot_part 1" >> $setenv_script
-		fi
+			;;
+		2)
+			target_boot_part=1
+			;;
+		esac
+
+		echo "boot_part $target_boot_part" >> "$setenv_script"
 	fi
 
-	boot_part_ready="$(fw_printenv -n boot_part_ready)"
-	if [ "$boot_part_ready" -ne "3" ]; then
-		echo "boot_part_ready 3" >> $setenv_script
+	boot_part_ready="$(fw_printenv -n boot_part_ready)" || {
+		echo "failed to read boot_part_ready"
+		return 1
+	}
+	if [ "$boot_part_ready" != "3" ]; then
+		echo "boot_part_ready 3" >> "$setenv_script"
 	fi
 
-	auto_recovery="$(fw_printenv -n auto_recovery)"
+	auto_recovery="$(fw_printenv -n auto_recovery)" || {
+		echo "failed to read auto_recovery"
+		return 1
+	}
 	if [ "$auto_recovery" != "yes" ]; then
-		echo "auto_recovery yes" >> $setenv_script
+		echo "auto_recovery yes" >> "$setenv_script"
 	fi
 
-	if [ -f "$setenv_script" ]; then
-		fw_setenv -s $setenv_script || {
+	if [ -s "$setenv_script" ]; then
+		fw_setenv -s "$setenv_script" || {
 			echo "failed to update U-Boot environment"
 			return 1
 		}
+	fi
+
+	if [ -n "${target_boot_part:-}" ]; then
+		actual_boot_part="$(fw_printenv -n boot_part)" || {
+			echo "failed to read back boot_part"
+			return 1
+		}
+
+		if [ "$actual_boot_part" != "$target_boot_part" ]; then
+			echo "boot_part verification failed: expected=$target_boot_part actual=$actual_boot_part"
+			return 1
+		fi
 	fi
 }
 
@@ -203,7 +242,10 @@ platform_do_upgrade() {
 	linksys,mx2000|\
 	linksys,mx5500|\
 	linksys,spnmx56)
-		linksys_mx_pre_upgrade "$1"
+		linksys_mx_pre_upgrade "$1" || {
+			echo "Linksys partition selection failed; refusing upgrade"
+			return 1
+		}
 		remove_oem_ubi_volume squashfs
 		nand_do_upgrade "$1"
 		;;
